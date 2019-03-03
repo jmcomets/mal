@@ -1,0 +1,10 @@
+[package]
+name = "mine"
+version = "0.1.0"
+#authors = ["jmcomets"]
+
+[dependencies]
+
+[[bin]]
+name = "step0_repl"
+path = "step0_repl.rs"
