@@ -3,6 +3,7 @@ extern crate lazy_static;
 
 // #![deny(warnings)]
 
+mod printer;
 mod reader;
 mod types;
 
@@ -11,20 +12,20 @@ use std::io::{
     Write
 };
 
-fn read(s: &str) -> &str {
-    s
+fn read(s: &str) -> Result<Option<types::MalType>, reader::ReadError> {
+    reader::read_str(s)
 }
 
-fn eval(s: &str) -> &str {
-    s
+fn eval(t: types::MalType) -> types::MalType {
+    t
 }
 
-fn print(s: &str) -> &str {
-    s
+fn print(t: types::MalType) -> String {
+    printer::pr_str(&t)
 }
 
-fn rep(s: &str) -> &str {
-    print(eval(read(s)))
+fn rep(s: &str) -> String {
+    print(eval(read(s).unwrap().unwrap()))
 }
 
 fn main() -> io::Result<()> {
@@ -41,7 +42,7 @@ fn main() -> io::Result<()> {
         if nb_bytes_read == 0 {
             break;
         }
-        let line = line.trim_right();
+        let line = line.trim_end();
         writeln!(&mut output, "{}", rep(line))?;
         output.flush()?;
     }

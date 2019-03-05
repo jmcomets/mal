@@ -1,95 +1,273 @@
-// #[macro_use]
-// extern crate lazy_static;
+use std::str::{self, FromStr};
 
 use regex::Regex;
 
 use crate::types::MalType;
 
-pub struct Reader {
-    tokens: Vec<Token>,
-    position: usize,
-}
+struct Reader(Vec<Token>);
 
 impl Reader {
-    fn new(tokens: Vec<Token>) -> Self {
-        Reader {
-            tokens: tokens,
-            position: 0,
-        }
+    fn new(mut tokens: Vec<Token>) -> Self {
+        tokens.reverse();
+        Reader(tokens)
     }
 
-    pub fn next(&mut self) -> Option<&Token> {
-        if self.position < self.tokens.len() {
-            let ref token = self.tokens[self.position];
-            self.position += 1;
-            Some(token)
-        } else {
-            None
-        }
+    fn next(&mut self) -> Option<Token> {
+        self.0.pop()
     }
 
-    pub fn peek(&self) -> Option<&Token> {
-        if self.position < self.tokens.len() {
-            let ref token = self.tokens[self.position];
-            // don't advance
-            Some(token)
-        } else {
-            None
+    fn peek(&self) -> Option<&Token> {
+        self.0.last()
+    }
+}
+
+const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
+
+#[derive(Debug, PartialEq)]
+pub(crate) struct ReaderParseError;
+
+impl FromStr for Reader {
+    type Err = ReaderParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        lazy_static! { static ref RE: Regex = Regex::new(TOKENS_REGEX).unwrap(); }
+
+        // tokenize
+        let tokens: Result<Vec<_>, _> = RE.captures_iter(s)
+            .map(|cap| Token::from_str(str::from_utf8(cap[1].as_bytes()).unwrap()))
+            .collect();
+        tokens.map(Reader::new).map_err(|_| ReaderParseError)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Token {
+    Special(char),        // []{}()'`~^@
+    SpecialTwoCharacters, // @~
+    Comment,              // The ";" token
+    Literal(Literal),     // integers, floats, booleans, strings, nil, ...
+    Symbol(String),       // identifiers
+}
+
+const SPECIAL_CHARS: &str = "[]{}()'`~^@";
+const SPECIAL_TWO_CHARS: &str = "@~";
+const COMMENT_CHAR: char = ';';
+
+#[derive(Debug, PartialEq)]
+struct TokenParseError;
+
+impl FromStr for Token {
+    type Err = TokenParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // special characters / comments
+        if s.len() == 1 {
+            let c = s.chars().next().unwrap();
+            if SPECIAL_CHARS.contains(c) {
+                return Ok(Token::Special(c));
+            } else if c == COMMENT_CHAR {
+                return Ok(Token::Comment);
+            }
+        } else if s == SPECIAL_TWO_CHARS {
+            return Ok(Token::SpecialTwoCharacters);
+        }
+
+        // literals
+        match s.parse::<Literal>() {
+            Ok(lit) => Ok(Token::Literal(lit)),
+
+            Err(LiteralParseError::UnterminatedString) => {
+                Err(TokenParseError)
+            }
+
+            _ => {
+                Ok(Token::Symbol(s.to_owned()))
+            }
         }
     }
 }
 
-#[derive(PartialEq)]
-pub struct Token(String);
-
-fn read_str(s: &str) {
-    let tokens = tokenize(s);
-    let mut reader = Reader::new(tokens);
-    read_form(&mut reader);
+#[derive(Debug, PartialEq)]
+enum Literal {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Str(String),
+    Nil,
 }
 
-pub fn tokenize(s: &str) -> Vec<Token> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#).unwrap();
+const NIL_STR: &str = "nil";
+const STRING_QUOTE_CHAR: char = '"';
+
+#[derive(Debug, PartialEq)]
+enum LiteralParseError {
+    UnterminatedString,
+    Unspecified,
+}
+
+impl FromStr for Literal {
+    type Err = LiteralParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // nil
+        if s == NIL_STR {
+            return Ok(Literal::Nil);
+        }
+
+        // booleans
+        if let Ok(b) = s.parse::<bool>() {
+            return Ok(Literal::Bool(b));
+        }
+
+        // integers
+        if let Ok(i) = s.parse::<i64>() {
+            return Ok(Literal::Int(i));
+        }
+
+        // floats
+        if let Ok(f) = s.parse::<f64>() {
+            return Ok(Literal::Float(f));
+        }
+
+        // strings
+        if s.len() >= 2 {
+            let first = s.chars().next().unwrap();
+
+            if first == STRING_QUOTE_CHAR {
+                let last = s.chars().last().unwrap();
+                if last != STRING_QUOTE_CHAR {
+                    return Err(LiteralParseError::UnterminatedString);
+                }
+
+                let s = s.chars()
+                    .skip(1)            // after the opening quote
+                    .take(s.len() - 2)  // before the closing quote
+                    .collect();
+                return Ok(Literal::Str(s));
+            }
+        }
+
+        Err(LiteralParseError::Unspecified)
     }
-    RE.captures_iter(s)
-        .map(|group| {
-            let bytes = group[0].as_bytes().to_owned();
-            String::from_utf8(bytes).unwrap()
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum ReadError {
+    ReaderParseError(ReaderParseError),
+    UnterminatedList(UnterminatedList),
+}
+
+impl From<UnterminatedList> for ReadError {
+    fn from(ul: UnterminatedList) -> Self {
+        ReadError::UnterminatedList(ul)
+    }
+}
+
+impl From<ReaderParseError> for ReadError {
+    fn from(e: ReaderParseError) -> Self {
+        ReadError::ReaderParseError(e)
+    }
+}
+
+pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, ReadError> {
+    let mut reader = Reader::from_str(s)?;
+    read_form(&mut reader).map_err(ReadError::from)
+}
+
+fn read_form(reader: &mut Reader) -> Result<Option<MalType>, UnterminatedList> {
+    reader.next()
+        .map(|token| {
+            if token == Token::Special('(') {
+                read_list(reader)
+            } else {
+                Ok(read_atom(token))
+            }
         })
-        .map(Token)
-        .collect()
+        .transpose()
 }
 
-fn read_form(reader: &mut Reader) -> MalType {
-    if reader.peek() == Some(&Token("(".to_string())) {
-        read_list(reader)
-    } else {
-        read_atom(reader)
-    }
-}
+#[derive(Debug, PartialEq)]
+pub(crate) struct UnterminatedList;
 
-fn read_list(reader: &mut Reader) -> MalType {
-    let mut eof_reached = false;
+fn read_list(reader: &mut Reader) -> Result<MalType, UnterminatedList> {
+    let mut paren_matched = false;
     let mut elements = vec![];
     while let Some(token) = reader.peek() {
-        if token == &Token(")".to_string()) {
-            eof_reached = true;
+        if token == &Token::Special(')') {
+            reader.next();
+            paren_matched = true;
             break;
         }
-        elements.push(read_form(reader));
+
+        if let Some(element) = read_form(reader)? {
+            elements.push(Box::new(element));
+        }
     }
 
-    if !eof_reached {
-        // TODO error
+    if paren_matched {
+        Ok(MalType::List(elements))
+    } else {
+        Err(UnterminatedList)
     }
-
-    unimplemented!()
 }
 
 
-fn read_atom(reader: &mut Reader) -> MalType {
-    // TODO
+fn read_atom(token: Token) -> MalType {
+    match token {
+        Token::Symbol(s)                  => MalType::Symbol(s),
+        Token::Literal(Literal::Int(i))   => MalType::Int(i),
+        Token::Literal(Literal::Float(f)) => MalType::Float(f),
+        Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
+        Token::Literal(Literal::Str(s))   => MalType::Str(s),
+        Token::Literal(Literal::Nil)      => MalType::Nil,
+        _                                 => unimplemented!(),
+    }
+}
 
-    unimplemented!()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // #[test]
+    // fn test_read_str() {
+    //     assert_eq!(read_str("123"), Some(Ok(MalType::Int(123))));
+    //     assert_eq!(read_str("(123 456)"), Some(Ok(MalType::List(vec![
+    //                                                      Box::new(MalType::Int(123)),
+    //                                                      Box::new(MalType::Int(456)),
+    //     ]))));
+    // }
+
+
+    #[test]
+    fn test_special_char_parsing() {
+        for c in SPECIAL_CHARS.chars() {
+            assert_eq!(Token::from_str(&c.to_string()), Ok(Token::Special(c)));
+        }
+
+        assert_eq!(Token::from_str(SPECIAL_TWO_CHARS), Ok(Token::SpecialTwoCharacters));
+
+        assert_eq!(Token::from_str("true"), Ok(Token::Literal(Literal::Bool(true))));
+    }
+
+    #[test]
+    fn test_literal_parsing() {
+        // booleans
+        assert_eq!(Literal::from_str("true"), Ok(Literal::Bool(true)));
+        assert_eq!(Literal::from_str("false"), Ok(Literal::Bool(false)));
+
+        // integers
+        assert_eq!(Literal::from_str("123"), Ok(Literal::Int(123)));
+
+        // floats
+        assert_eq!(Literal::from_str("1.2"), Ok(Literal::Float(1.2)));
+        assert_eq!(Literal::from_str("0.2"), Ok(Literal::Float(0.2)));
+        assert_eq!(Literal::from_str("0.0"), Ok(Literal::Float(0.0)));
+
+        // nil
+        assert_eq!(Literal::from_str("nil"), Ok(Literal::Nil));
+
+        // strings
+        assert_eq!(Literal::from_str("\"foobar\""), Ok(Literal::Str("foobar".to_string())));
+        assert_eq!(Literal::from_str("\"foobar"), Err(LiteralParseError::UnterminatedString));
+    }
 }
