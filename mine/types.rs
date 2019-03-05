@@ -7,4 +7,5 @@ pub(crate) enum MalType {
     Bool(bool),
     Str(String),
     Nil,
+    Unimplemented,
 }

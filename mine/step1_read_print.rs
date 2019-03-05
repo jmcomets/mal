@@ -1,5 +1,4 @@
-#[macro_use]
-extern crate lazy_static;
+#[macro_use] extern crate lazy_static;
 
 // #![deny(warnings)]
 
@@ -12,7 +11,7 @@ use std::io::{
     Write
 };
 
-fn read(s: &str) -> Result<Option<types::MalType>, reader::ReadError> {
+fn read(s: &str) -> Result<Option<types::MalType>, reader::Error> {
     reader::read_str(s)
 }
 
@@ -25,7 +24,12 @@ fn print(t: types::MalType) -> String {
 }
 
 fn rep(s: &str) -> String {
-    print(eval(read(s).unwrap().unwrap()))
+    match read(s) {
+        Ok(Some(t))                          => print(eval(t)),
+        Ok(None)                             => "EOF".to_string(),
+        Err(reader::Error::UnbalancedString) => "unbalanced string".to_string(),
+        Err(reader::Error::UnbalancedList)   => "unbalanced list".to_string(),
+    }
 }
 
 fn main() -> io::Result<()> {

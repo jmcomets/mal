@@ -21,13 +21,19 @@ impl Reader {
     }
 }
 
+#[derive(PartialEq, Debug)]
+pub(crate) enum Error {
+    UnbalancedString,
+    UnbalancedList,
+}
+
 const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ReaderParseError;
 
 impl FromStr for Reader {
-    type Err = ReaderParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! { static ref RE: Regex = Regex::new(TOKENS_REGEX).unwrap(); }
@@ -36,7 +42,7 @@ impl FromStr for Reader {
         let tokens: Result<Vec<_>, _> = RE.captures_iter(s)
             .map(|cap| Token::from_str(str::from_utf8(cap[1].as_bytes()).unwrap()))
             .collect();
-        tokens.map(Reader::new).map_err(|_| ReaderParseError)
+        tokens.map(Reader::new)
     }
 }
 
@@ -53,11 +59,8 @@ const SPECIAL_CHARS: &str = "[]{}()'`~^@";
 const SPECIAL_TWO_CHARS: &str = "@~";
 const COMMENT_CHAR: char = ';';
 
-#[derive(Debug, PartialEq)]
-struct TokenParseError;
-
 impl FromStr for Token {
-    type Err = TokenParseError;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // special characters / comments
@@ -76,8 +79,8 @@ impl FromStr for Token {
         match s.parse::<Literal>() {
             Ok(lit) => Ok(Token::Literal(lit)),
 
-            Err(LiteralParseError::UnterminatedString) => {
-                Err(TokenParseError)
+            Err(LiteralParseError::UnbalancedString) => {
+                Err(Error::UnbalancedString)
             }
 
             _ => {
@@ -101,7 +104,7 @@ const STRING_QUOTE_CHAR: char = '"';
 
 #[derive(Debug, PartialEq)]
 enum LiteralParseError {
-    UnterminatedString,
+    UnbalancedString,
     Unspecified,
 }
 
@@ -136,7 +139,7 @@ impl FromStr for Literal {
             if first == STRING_QUOTE_CHAR {
                 let last = s.chars().last().unwrap();
                 if last != STRING_QUOTE_CHAR {
-                    return Err(LiteralParseError::UnterminatedString);
+                    return Err(LiteralParseError::UnbalancedString);
                 }
 
                 let s = s.chars()
@@ -151,30 +154,12 @@ impl FromStr for Literal {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub(crate) enum ReadError {
-    ReaderParseError(ReaderParseError),
-    UnterminatedList(UnterminatedList),
-}
-
-impl From<UnterminatedList> for ReadError {
-    fn from(ul: UnterminatedList) -> Self {
-        ReadError::UnterminatedList(ul)
-    }
-}
-
-impl From<ReaderParseError> for ReadError {
-    fn from(e: ReaderParseError) -> Self {
-        ReadError::ReaderParseError(e)
-    }
-}
-
-pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, ReadError> {
+pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, Error> {
     let mut reader = Reader::from_str(s)?;
-    read_form(&mut reader).map_err(ReadError::from)
+    read_form(&mut reader)
 }
 
-fn read_form(reader: &mut Reader) -> Result<Option<MalType>, UnterminatedList> {
+fn read_form(reader: &mut Reader) -> Result<Option<MalType>, Error> {
     reader.next()
         .map(|token| {
             if token == Token::Special('(') {
@@ -186,10 +171,7 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, UnterminatedList> {
         .transpose()
 }
 
-#[derive(Debug, PartialEq)]
-pub(crate) struct UnterminatedList;
-
-fn read_list(reader: &mut Reader) -> Result<MalType, UnterminatedList> {
+fn read_list(reader: &mut Reader) -> Result<MalType, Error> {
     let mut paren_matched = false;
     let mut elements = vec![];
     while let Some(token) = reader.peek() {
@@ -207,7 +189,7 @@ fn read_list(reader: &mut Reader) -> Result<MalType, UnterminatedList> {
     if paren_matched {
         Ok(MalType::List(elements))
     } else {
-        Err(UnterminatedList)
+        Err(Error::UnbalancedList)
     }
 }
 
@@ -220,7 +202,7 @@ fn read_atom(token: Token) -> MalType {
         Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
         Token::Literal(Literal::Str(s))   => MalType::Str(s),
         Token::Literal(Literal::Nil)      => MalType::Nil,
-        _                                 => unimplemented!(),
+        _                                 => MalType::Unimplemented,
     }
 }
 
@@ -268,6 +250,6 @@ mod tests {
 
         // strings
         assert_eq!(Literal::from_str("\"foobar\""), Ok(Literal::Str("foobar".to_string())));
-        assert_eq!(Literal::from_str("\"foobar"), Err(LiteralParseError::UnterminatedString));
+        assert_eq!(Literal::from_str("\"foobar"), Err(LiteralParseError::UnbalancedString));
     }
 }

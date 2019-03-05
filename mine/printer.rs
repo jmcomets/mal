@@ -2,16 +2,17 @@ use crate::types::MalType;
 
 pub(crate) fn pr_str(t: &MalType) -> String {
     match t {
+        MalType::Unimplemented => "unimplemented".to_string(),
         MalType::List(elements) => {
             let mut s = String::new();
-            s += "[";
+            s += "(";
             for (i, elem) in elements.iter().enumerate() {
                 if i != 0 {
-                    s += ", ";
+                    s += " ";
                 }
                 s += &pr_str(elem);
             }
-            s += "]";
+            s += ")";
             s
         }
         MalType::Symbol(s) => s.clone(),
