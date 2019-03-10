@@ -10,7 +10,8 @@ use std::io::{
 mod printer;
 mod reader;
 mod types;
-mod env;
+
+#[macro_use] mod env;
 
 use env::Env;
 
@@ -19,9 +20,17 @@ fn read(s: &str) -> Result<Option<types::MalType>, reader::Error> {
 }
 
 #[derive(Debug)]
-struct EvalError;
+enum EvalError {
+    NotEvaluable(types::MalType),
+    SymbolNotFound(String),
+    ArityError {
+        symbol: String,
+        expected: usize,
+        reached: usize,
+    }
+}
 
-fn eval(ast: types::MalType, env: &Env) -> Result<types::MalType, EvalError> {
+fn eval(ast: types::MalType, env: &mut Env) -> Result<types::MalType, EvalError> {
     if let types::MalType::List(elements) = ast {
         let mut evaluated_elements = vec![];
         for element in elements {
@@ -30,10 +39,31 @@ fn eval(ast: types::MalType, env: &Env) -> Result<types::MalType, EvalError> {
         }
 
         if !evaluated_elements.is_empty() {
-            let symbol = evaluated_elements[0].as_symbol().unwrap();
-            env.get(symbol)
-                .map(|callable| callable.call(&evaluated_elements[1..]))
-                .ok_or(EvalError)
+                use EvalError::*;
+            match &evaluated_elements[0] {
+                types::MalType::Symbol(symbol) => {
+                    if symbol == "def!" {
+                        unimplemented!()
+                    } else if symbol == "let*" {
+                        unimplemented!()
+                    } else if let Some(env_value) = env.get(symbol) {
+                        env_value.try_call(&evaluated_elements[1..])
+                            .map_err(|e| {
+                                ArityError {
+                                    symbol: symbol.to_string(),
+                                    expected: e.expected,
+                                    reached: e.reached,
+                                }
+                            })
+                    } else {
+                        Err(SymbolNotFound(symbol.to_string()))
+                    }
+
+                }
+
+                t @ _ => Err(NotEvaluable(t.clone())),
+
+            }
         } else {
             Ok(types::MalType::List(vec![]))
         }
@@ -49,13 +79,25 @@ fn print(t: types::MalType) -> String {
 fn rep(s: &str) -> String {
     let mut env = Env::new();
 
-    // env.set("+", arithmetic_operation!(+));
-    // env.set("-", arithmetic_operation!(-));
-    // env.set("*", arithmetic_operation!(*));
-    // env.set("/", arithmetic_operation!(/));
+    env.set("+".to_string(), arithmetic_operations!(+));
+    env.set("-".to_string(), arithmetic_operations!(-));
+    env.set("*".to_string(), arithmetic_operations!(*));
+    env.set("/".to_string(), arithmetic_operations!(/));
 
     match read(s) {
-        Ok(Some(t))                          => eval(t, &env).map(print).unwrap_or("evaluation error".to_string()),
+        Ok(Some(t)) => {
+            match eval(t, &mut env) {
+                Ok(t) => print(t),
+                Err(e) => {
+                    use EvalError::*;
+                    match e {
+                        NotEvaluable(_t) => "evaluation error".to_string(), // TODO add `print(t)`
+                        SymbolNotFound(symbol) => format!("symbol {} not found", symbol),
+                        ArityError { symbol, expected, reached } => format!("cannot call {} with {} args (expected {})", symbol, reached, expected),
+                    }
+                }
+            }
+        }
         Ok(None)                             => "EOF".to_string(),
         Err(reader::Error::UnbalancedString) => "unbalanced string".to_string(),
         Err(reader::Error::UnbalancedList)   => "unbalanced list".to_string(),

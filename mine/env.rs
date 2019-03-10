@@ -1,14 +1,15 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 use crate::types::MalType;
 
-pub(crate) struct Env {
-    outer: Option<Box<Env>>,
-    data: HashMap<String, Callable<'static>>,
+pub(crate) struct Env<'a> {
+    outer: Option<Box<Env<'a>>>,
+    data: HashMap<String, EnvValue<'a>>,
 }
 
-impl Env {
+impl<'a> Env<'a> {
     pub fn new() -> Self {
         Env {
             outer: None,
@@ -16,33 +17,34 @@ impl Env {
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&Callable<'static>> {
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&EnvValue>
+        where String: Borrow<Q>,
+              Q: Hash + Eq,
+    {
         self.data.get(key)
             .or_else(|| self.outer.as_ref().and_then(|outer| outer.get(key)))
     }
 
-    pub fn set(&mut self, key: String, value: Value) {
-        unimplemented!()
+    pub fn set(&mut self, key: String, value: EnvValue<'a>) {
+        self.data.insert(key, value);
     }
 }
 
-/*
-
 macro_rules! match_binary_operation {
     ($($left:tt $op:tt $right:tt => $out:tt),*) => {
-        |a: &MalType, b: &MalType| {
-            use MalType::*;
+        |a: &$crate::types::MalType, b: &$crate::types::MalType| {
+            use $crate::types::MalType::*;
             match (a, b) {
                 $(($left(left), $right(right)) => Some($out(left $op right)),)*
-                    _                          => None,
+                _                              => None,
             }
         }
     }
 }
 
-macro_rules! arithmetic_operation {
+macro_rules! arithmetic_operations {
     ($op:tt) => {
-        Callable::new2(|a, b| {
+        $crate::env::EnvValue::callable2(|a, b| {
             let matchers = match_binary_operation! {
                 Int $op Int => Int,
                 Float $op Float => Float
@@ -53,25 +55,53 @@ macro_rules! arithmetic_operation {
     }
 }
 
-*/
-
-pub(crate) enum Value {
+pub(crate) enum EnvValue<'a> {
+    #[allow(dead_code)]
+    Value(MalType),
+    Callable {
+        delegate: Box<'a + Fn(&[MalType]) -> MalType>,
+        arity: usize,
+    }
 }
 
-pub(crate) struct Callable<'a>(Box<'a + Fn(&[MalType]) -> MalType>);
+#[derive(Debug)]
+pub(crate) struct ArityError {
+    pub expected: usize,
+    pub reached: usize,
+}
 
-impl<'a> Callable<'a> {
-    pub fn new2<F>(f: F) -> Self
+impl<'a> EnvValue<'a> {
+    pub fn callable2<F>(f: F) -> Self
         where F: 'a + Fn(&MalType, &MalType) -> MalType,
     {
-        Callable(Box::new(move |args| {
-            if args.len() != 2 { panic!("function expected 2 arguments, got {}", args.len()); }
-            f(&args[0], &args[1])
-        }))
+        EnvValue::Callable {
+            delegate: Box::new(move |args| { f(&args[0], &args[1]) }),
+            arity: 2,
+        }
     }
 
-    pub fn call(&self, args: &[MalType]) -> MalType {
-        self.0(args)
+    pub fn try_call(&self, args: &[MalType]) -> Result<MalType, ArityError> {
+        match self {
+            EnvValue::Value(value) => {
+                if !args.is_empty() {
+                    return Err(ArityError {
+                        expected: 0,
+                        reached: args.len(),
+                    });
+                }
+
+                Ok(value.clone())
+            }
+            EnvValue::Callable { arity, delegate } => {
+                if *arity != args.len() {
+                    return Err(ArityError {
+                        expected: *arity,
+                        reached: args.len(),
+                    });
+                }
+
+                Ok(delegate(args))
+            }
+        }
     }
 }
-
