@@ -182,7 +182,7 @@ fn read_list(reader: &mut Reader) -> Result<MalType, Error> {
         }
 
         if let Some(element) = read_form(reader)? {
-            elements.push(Box::new(element));
+            elements.push(element);
         }
     }
 
