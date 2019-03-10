@@ -1,32 +1,35 @@
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::rc::Rc;
 
 use crate::types::MalType;
 
-pub(crate) struct Env<'a> {
-    outer: Option<Box<Env<'a>>>,
-    data: HashMap<String, EnvValue<'a>>,
+pub(crate) struct Env {
+    outer: Option<Box<Env>>,
+    data: RefCell<HashMap<String, EnvValue>>,
 }
 
-impl<'a> Env<'a> {
+impl Env {
     pub fn new() -> Self {
         Env {
             outer: None,
-            data: HashMap::new(),
+            data: RefCell::new(HashMap::new()),
         }
     }
 
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&EnvValue>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<EnvValue>
         where String: Borrow<Q>,
               Q: Hash + Eq,
     {
-        self.data.get(key)
+        self.data.borrow().get(key)
+            .map(Clone::clone)
             .or_else(|| self.outer.as_ref().and_then(|outer| outer.get(key)))
     }
 
-    pub fn set(&mut self, key: String, value: EnvValue<'a>) {
-        self.data.insert(key, value);
+    pub fn set(&self, key: String, value: EnvValue) {
+        self.data.borrow_mut().insert(key, value);
     }
 }
 
@@ -55,53 +58,28 @@ macro_rules! arithmetic_operations {
     }
 }
 
-pub(crate) enum EnvValue<'a> {
+#[derive(Clone)]
+pub(crate) enum EnvValue {
     #[allow(dead_code)]
     Value(MalType),
     Callable {
-        delegate: Box<'a + Fn(&[MalType]) -> MalType>,
+        delegate: Rc<Fn(&[EnvValue]) -> MalType>,
         arity: usize,
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct ArityError {
-    pub expected: usize,
-    pub reached: usize,
-}
-
-impl<'a> EnvValue<'a> {
+impl EnvValue {
     pub fn callable2<F>(f: F) -> Self
-        where F: 'a + Fn(&MalType, &MalType) -> MalType,
+        where F: 'static + Fn(&MalType, &MalType) -> MalType,
     {
         EnvValue::Callable {
-            delegate: Box::new(move |args| { f(&args[0], &args[1]) }),
+            delegate: Rc::new(move |args| {
+                match (&args[0], &args[1]) {
+                    (EnvValue::Value(a), EnvValue::Value(b)) => f(a, b),
+                    _ => unimplemented!(),
+                }
+            }),
             arity: 2,
-        }
-    }
-
-    pub fn try_call(&self, args: &[MalType]) -> Result<MalType, ArityError> {
-        match self {
-            EnvValue::Value(value) => {
-                if !args.is_empty() {
-                    return Err(ArityError {
-                        expected: 0,
-                        reached: args.len(),
-                    });
-                }
-
-                Ok(value.clone())
-            }
-            EnvValue::Callable { arity, delegate } => {
-                if *arity != args.len() {
-                    return Err(ArityError {
-                        expected: *arity,
-                        reached: args.len(),
-                    });
-                }
-
-                Ok(delegate(args))
-            }
         }
     }
 }
