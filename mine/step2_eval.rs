@@ -43,10 +43,16 @@ fn eval(ast: types::MalType, repl_env: &ReplEnv) -> Result<types::MalType, EvalE
         }
 
         if !evaluated_elements.is_empty() {
-            let symbol = evaluated_elements[0].as_symbol().unwrap();
-            repl_env.get(symbol)
-                .map(|callable| callable.0(&evaluated_elements[1..]))
-                .ok_or(EvalError)
+            match &evaluated_elements[0] {
+                types::MalType::Symbol(symbol) => {
+                    repl_env.get(symbol)
+                        .map(|callable| callable.0(&evaluated_elements[1..]))
+                        .ok_or(EvalError)
+                }
+
+                _ => Err(EvalError),
+
+            }
         } else {
             Ok(types::MalType::List(vec![]))
         }
