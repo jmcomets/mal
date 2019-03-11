@@ -1,5 +1,8 @@
-#[derive(Clone, Debug, PartialEq)]
+use std::fmt;
+
+#[derive(Clone)]
 pub(crate) enum MalType {
+    Unimplemented, // TODO remove
     List(Vec<MalType>),
     Symbol(String),
     Int(i64),
@@ -7,7 +10,78 @@ pub(crate) enum MalType {
     Bool(bool),
     Str(String),
     Nil,
-    Unimplemented,
+    NativeFunc {
+        name: &'static str,
+        signature: (Vec<&'static str>, &'static str),
+        func: fn(&[MalType]) -> MalResult,
+    }
+}
+
+impl fmt::Debug for MalType {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use MalType::*;
+        match self {
+            Unimplemented => write!(fmt, "Unimplemented"),
+            List(x)       => write!(fmt, "List {{ {:?} }}", x),
+            Symbol(x)     => write!(fmt, "Symbol {{ {:?} }}", x),
+            Int(x)        => write!(fmt, "Int {{ {:?} }}", x),
+            Float(x)      => write!(fmt, "Float {{ {:?} }}", x),
+            Bool(x)       => write!(fmt, "Bool {{ {:?} }}", x),
+            Str(x)        => write!(fmt, "Str {{ {:?} }}", x),
+            Nil           => write!(fmt, "Nil"),
+            NativeFunc { name, signature, .. } => {
+                fmt.debug_struct("NativeFunc")
+                    .field("name", name)
+                    .field("signature", signature)
+                    .finish()
+            }
+        }
+    }
+}
+
+pub(crate) type MalResult = Result<MalType, MalError>;
+
+pub(crate) enum MalError {
+    TypeCheckFailed {
+        // expected: Vec<String>,
+        // reached: String,
+    },
+    ArityError {
+        // symbol: String,
+        expected: usize,
+        reached: usize,
+    }
+}
+
+macro_rules! binary_operator {
+    ($left:tt $op:tt $right:tt -> $out:tt) => {
+            $crate::types::MalType::NativeFunc {
+                name: stringify!($op),
+                signature: (vec![stringify!($left), stringify!($right)], stringify!($out)),
+                func: {
+                    use $crate::types::{
+                        MalType::{self, *},
+                        MalError::*,
+                        MalResult,
+                    };
+
+                    |args: &[MalType]| -> MalResult {
+                        if args.len() != 2 {
+                            return Err(ArityError {
+                                expected: 2,
+                                reached: args.len(),
+                            });
+                        }
+
+                        if let ($left(lhs), $right(rhs)) = (&args[0], &args[1]) {
+                            Ok($out(lhs $op rhs))
+                        } else {
+                            Err(TypeCheckFailed{})
+                        }
+                    }
+                },
+            }
+    }
 }
 
 // TODO generate this code via macro_rules!

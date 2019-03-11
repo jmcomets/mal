@@ -1,9 +1,11 @@
 use crate::types::MalType;
 
 pub(crate) fn pr_str(t: &MalType) -> String {
+    use MalType::*;
     match t {
-        MalType::Unimplemented => "unimplemented".to_string(),
-        MalType::List(elements) => {
+        Unimplemented => "unimplemented".to_string(),
+
+        List(elements) => {
             let mut s = String::new();
             s += "(";
             for (i, elem) in elements.iter().enumerate() {
@@ -15,11 +17,14 @@ pub(crate) fn pr_str(t: &MalType) -> String {
             s += ")";
             s
         }
-        MalType::Symbol(s) => s.clone(),
-        MalType::Int(i)    => i.to_string(),
-        MalType::Float(f)  => f.to_string(),
-        MalType::Bool(b)   => b.to_string(),
-        MalType::Str(s)    => "\"".to_string() + s + "\"",
-        MalType::Nil       => "nil".to_string(),
+
+        Symbol(s) => s.clone(),
+        Int(i)    => i.to_string(),
+        Float(f)  => f.to_string(),
+        Bool(b)   => b.to_string(),
+        Str(s)    => "\"".to_string() + s + "\"",
+        Nil       => "nil".to_string(),
+
+        NativeFunc { name, .. } => name.to_string(),
     }
 }
