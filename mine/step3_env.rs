@@ -2,10 +2,9 @@
 
 #[macro_use] extern crate lazy_static;
 
-use std::io::{
-    self,
-    Write
-};
+use rustyline::{Editor, error::ReadlineError};
+
+use std::io;
 
 mod printer;
 mod reader;
@@ -172,25 +171,34 @@ fn default_env() -> Env {
 }
 
 fn main() -> io::Result<()> {
-    let input = io::stdin();
-    let mut output = io::stdout();
+    // `()` can be used when no completer is required
+    let mut rl = Editor::<()>::new();
+    if rl.load_history(".mal-history").is_err() {
+        println!("No previous history.");
+    }
 
     let env = default_env();
 
-    let mut line = String::new();
+    // let mut line = String::new();
     loop {
-        write!(&mut output, "user> ")?;
-        output.flush()?;
-
-        line.clear();
-        let nb_bytes_read = input.read_line(&mut line)?;
-        if nb_bytes_read == 0 {
-            break;
+        match rl.readline("user> ") {
+            Ok(line) => {
+                rl.add_history_entry(line.to_string());
+                rl.save_history(".mal-history").unwrap();
+                if line.len() > 0 {
+                    println!("{}", rep(&line, &env));
+                }
+            },
+            Err(ReadlineError::Interrupted) => continue,
+            Err(ReadlineError::Eof)         => break,
+            Err(err) => {
+                eprintln!("readline error: {:?}", err);
+                break
+            }
         }
-        let line = line.trim_end();
-        writeln!(&mut output, "{}", rep(line, &env))?;
-        output.flush()?;
     }
 
     Ok(())
 }
+
+
