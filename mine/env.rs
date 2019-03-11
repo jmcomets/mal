@@ -5,15 +5,23 @@ use std::hash::Hash;
 
 use crate::types::MalType;
 
-pub(crate) struct Env {
-    outer: Option<Box<Env>>,
+#[derive(Debug)]
+pub(crate) struct Env<'a> {
+    outer: Option<&'a Env<'a>>,
     data: RefCell<HashMap<String, MalType>>,
 }
 
-impl Env {
+impl<'a> Env<'a> {
     pub fn new() -> Self {
         Env {
             outer: None,
+            data: RefCell::new(HashMap::new()),
+        }
+    }
+
+    pub fn wrap(outer: &'a Env) -> Self {
+        Env {
+            outer: Some(outer),
             data: RefCell::new(HashMap::new()),
         }
     }

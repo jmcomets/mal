@@ -26,6 +26,7 @@ fn read(s: &str) -> Result<Option<AST>, ReadError> {
 enum EvalError {
     NotEvaluable(AST),
     CanOnlyDefSymbol(AST),
+    CanOnlyLetSymbol(AST),
     SymbolNotFound(String),
     ASTError(ASTError),
 }
@@ -33,7 +34,48 @@ use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-fn eval_ast<'a>(ast: AST, env: &Env) -> Result<AST, EvalError> {
+fn eval_def(args: &[AST], env: &Env) -> Result<AST, EvalError> {
+    if args.len() == 2 {
+        if let AST::Symbol(symbol) = &args[0] {
+            let value = eval(args[1].clone(), env)?;
+            env.set(symbol.to_string(), value.clone());
+            Ok(value)
+        } else {
+            Err(CanOnlyDefSymbol(args[0].clone()))
+        }
+    } else {
+        Err(ASTError(ArityError {
+            expected: 2,
+            reached: args.len(),
+        }))
+    }
+}
+
+fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
+    let new_env = Env::wrap(env);
+    if args.len() == 2 {
+        if let AST::List(bindings) = &args[0] {
+            for let_args in bindings.chunks(2) {
+                if let AST::Symbol(symbol) = &let_args[0] {
+                    let value = eval(let_args[1].clone(), &new_env)?;
+                    new_env.set(symbol.to_string(), value);
+                } else {
+                    return Err(CanOnlyLetSymbol(let_args[0].clone()));
+                }
+            }
+            eval(args[1].clone(), &new_env)
+        } else {
+            unimplemented!()
+        }
+    } else {
+        Err(ASTError(ArityError {
+            expected: 2,
+            reached: args.len(),
+        }))
+    }
+}
+
+fn eval_ast(ast: AST, env: &Env) -> Result<AST, EvalError> {
     match ast.clone() {
         AST::Symbol(symbol) => {
             Ok(env.get(&symbol)
@@ -53,61 +95,34 @@ fn eval_ast<'a>(ast: AST, env: &Env) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_def(args: &[AST], env: &Env) -> Result<AST, EvalError> {
-    if args.len() == 2 {
-        let key = &args[0];
-        let value = &args[1];
-        match key {
-            AST::Symbol(symbol) => {
-                env.set(symbol.to_string(), value.clone());
-                Ok(value.clone())
-            }
-
-            ast @ _  => Err(CanOnlyDefSymbol(ast.clone())),
+fn eval_apply(ast: AST) -> Result<AST, EvalError> {
+    if let AST::List(elems) = ast {
+        match &elems[0] {
+            AST::NativeFunc { func, .. } => func(&elems[1..]).map_err(ASTError),
+            AST::Symbol(symbol)          => Err(SymbolNotFound(symbol.to_string())),
+            ast @ _                      => Err(NotEvaluable(ast.clone())),
         }
     } else {
-        Err(ASTError(ArityError {
-            expected: 2,
-            reached: args.len(),
-        }))
-    }
-}
-
-fn eval_symbol(symbol: &AST, args: &[AST], env: &Env) -> Result<AST, EvalError> {
-    match symbol {
-        AST::Symbol(symbol) => {
-            if symbol == "def!" {
-                eval_def(args, env)
-            } else if symbol == "let*" {
-                unimplemented!()
-            } else {
-                Err(SymbolNotFound(symbol.to_string()))
-            }
-        }
-
-        AST::NativeFunc { func, .. } => func(args).map_err(ASTError),
-
-        ast @ _ => Err(EvalError::NotEvaluable(ast.clone())),
+        unreachable!()
     }
 }
 
 fn eval(ast: AST, env: &Env) -> Result<AST, EvalError> {
-    if let AST::List(elems) = ast {
+    if let AST::List(elems) = ast.clone() {
         if !elems.is_empty() {
-            let mut evals = vec![];
-            for element in elems {
-                let evaluated = eval_ast(element, env)?;
-                evals.push(evaluated);
+            if let AST::Symbol(symbol) = &elems[0] {
+                if symbol == "def!" {
+                    return eval_def(&elems[1..], env);
+                } else if symbol == "let*" {
+                    return eval_let(&elems[1..], env);
+                }
             }
-
-            let symbol = &evals[0];
-            let args = &evals[1..];
-            eval_symbol(symbol, args, env)
+            eval_apply(eval_ast(ast, env)?)
         } else {
             Ok(AST::List(vec![]))
         }
     } else {
-        Ok(ast)
+        eval_ast(ast, &env)
     }
 }
 
@@ -121,6 +136,7 @@ fn eval_print(ast: AST, env: &Env) -> String {
         Err(e)  => {
             match e {
                 CanOnlyDefSymbol(ast)  => format!("can only def! symbols (not '{}')", print(ast)),
+                CanOnlyLetSymbol(ast)  => format!("can only let! symbols (not '{}')", print(ast)),
                 NotEvaluable(ast)      => format!("cannot evaluate '{}'", print(ast)),
                 SymbolNotFound(symbol) => format!("symbol '{}' not found", symbol),
                 ASTError(TypeCheckFailed {}) => format!("typecheck failed"),
@@ -140,21 +156,16 @@ fn rep(s: &str, env: &Env) -> String {
     }
 }
 
-fn default_env() -> Env {
-    let env = Env::new();
-    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
-    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
-    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
-    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
-    env
-}
-
 fn main() -> io::Result<()> {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let env = default_env();
+    let env = Env::new();
+    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
+    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
+    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
+    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
 
     // let mut line = String::new();
     loop {
