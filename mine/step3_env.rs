@@ -34,7 +34,7 @@ use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-fn eval_def(args: &[AST], env: &Env) -> Result<AST, EvalError> {
+fn eval_def(args: &[AST], env: &mut Env) -> Result<AST, EvalError> {
     if args.len() == 2 {
         if let AST::Symbol(symbol) = &args[0] {
             let value = eval(args[1].clone(), env)?;
@@ -52,18 +52,18 @@ fn eval_def(args: &[AST], env: &Env) -> Result<AST, EvalError> {
 }
 
 fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
-    let new_env = Env::wrap(env);
+    let mut new_env = Env::wrap(env);
     if args.len() == 2 {
         if let AST::List(bindings) = &args[0] {
             for let_args in bindings.chunks(2) {
                 if let AST::Symbol(symbol) = &let_args[0] {
-                    let value = eval(let_args[1].clone(), &new_env)?;
+                    let value = eval(let_args[1].clone(), &mut new_env)?;
                     new_env.set(symbol.to_string(), value);
                 } else {
                     return Err(CanOnlyLetSymbol(let_args[0].clone()));
                 }
             }
-            eval(args[1].clone(), &new_env)
+            eval(args[1].clone(), &mut new_env)
         } else {
             unimplemented!()
         }
@@ -75,7 +75,7 @@ fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_ast(ast: AST, env: &Env) -> Result<AST, EvalError> {
+fn eval_ast(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
     match ast.clone() {
         AST::Symbol(symbol) => {
             Ok(env.get(&symbol)
@@ -107,7 +107,7 @@ fn eval_apply(ast: AST) -> Result<AST, EvalError> {
     }
 }
 
-fn eval(ast: AST, env: &Env) -> Result<AST, EvalError> {
+fn eval(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
     if let AST::List(elems) = ast.clone() {
         if !elems.is_empty() {
             if let AST::Symbol(symbol) = &elems[0] {
@@ -122,7 +122,7 @@ fn eval(ast: AST, env: &Env) -> Result<AST, EvalError> {
             Ok(AST::List(vec![]))
         }
     } else {
-        eval_ast(ast, &env)
+        eval_ast(ast, env)
     }
 }
 
@@ -130,7 +130,7 @@ fn print(ast: AST) -> String {
     printer::pr_str(&ast)
 }
 
-fn eval_print(ast: AST, env: &Env) -> String {
+fn eval_print(ast: AST, env: &mut Env) -> String {
     match eval(ast, env) {
         Ok(ast) => print(ast),
         Err(e)  => {
@@ -147,7 +147,7 @@ fn eval_print(ast: AST, env: &Env) -> String {
     }
 }
 
-fn rep(s: &str, env: &Env) -> String {
+fn rep(s: &str, env: &mut Env) -> String {
     match read(s) {
         Ok(Some(ast))         => eval_print(ast, env),
         Ok(None)              => "EOF".to_string(),
@@ -156,16 +156,21 @@ fn rep(s: &str, env: &Env) -> String {
     }
 }
 
+fn default_env() -> Env<'static> {
+    let mut env = Env::new();
+    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
+    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
+    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
+    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
+    env
+}
+
 fn main() -> io::Result<()> {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let env = Env::new();
-    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
-    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
-    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
-    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
+    let mut env = default_env();
 
     // let mut line = String::new();
     loop {
@@ -174,7 +179,7 @@ fn main() -> io::Result<()> {
                 rl.add_history_entry(line.to_string());
                 rl.save_history(".mal-history").unwrap();
                 if line.len() > 0 {
-                    println!("{}", rep(&line, &env));
+                    println!("{}", rep(&line, &mut env));
                 }
             },
             Err(ReadlineError::Interrupted) => continue,
