@@ -54,18 +54,19 @@ fn eval_def(args: &[AST], env: &mut Env) -> Result<AST, EvalError> {
 fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
     let mut new_env = Env::wrap(env);
     if args.len() == 2 {
-        if let AST::List(bindings) = &args[0] {
-            for let_args in bindings.chunks(2) {
-                if let AST::Symbol(symbol) = &let_args[0] {
-                    let value = eval(&let_args[1], &mut new_env)?;
-                    new_env.set(symbol.to_string(), value);
-                } else {
-                    return Err(CanOnlyLetSymbol(let_args[0].clone()));
+        match &args[0] {
+            AST::List(bindings) | AST::Vector(bindings) => {
+                for let_args in bindings.chunks(2) {
+                    if let AST::Symbol(symbol) = &let_args[0] {
+                        let value = eval(&let_args[1], &mut new_env)?;
+                        new_env.set(symbol.to_string(), value);
+                    } else {
+                        return Err(CanOnlyLetSymbol(let_args[0].clone()));
+                    }
                 }
+                eval(&args[1], &mut new_env)
             }
-            eval(&args[1], &mut new_env)
-        } else {
-            unimplemented!()
+            _ => unimplemented!()
         }
     } else {
         Err(ASTError(ArityError {
@@ -89,6 +90,15 @@ fn eval_ast(ast: &AST, env: &mut Env) -> Result<AST, EvalError> {
                 evals.push(evaluated);
             }
             Ok(AST::List(evals))
+        }
+
+        AST::Vector(elements) => {
+            let mut evals = vec![];
+            for element in elements {
+                let evaluated = eval(element, env)?;
+                evals.push(evaluated);
+            }
+            Ok(AST::Vector(evals))
         }
 
         ast @ _ => Ok(ast.clone()),

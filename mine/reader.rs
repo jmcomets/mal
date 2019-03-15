@@ -162,20 +162,20 @@ pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, Error> {
 fn read_form(reader: &mut Reader) -> Result<Option<MalType>, Error> {
     reader.next()
         .map(|token| {
-            if token == Token::Special('(') {
-                read_list(reader)
-            } else {
-                Ok(read_atom(token))
+            match token {
+                Token::Special('(') => read_list(reader, ')', |x| Ok(MalType::List(x))),
+                Token::Special('[') => read_list(reader, ']', |x| Ok(MalType::Vector(x))),
+                _                   => Ok(read_atom(token))
             }
         })
         .transpose()
 }
 
-fn read_list(reader: &mut Reader) -> Result<MalType, Error> {
+fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -> Result<T, Error>) -> Result<T, Error> {
     let mut paren_matched = false;
     let mut elements = vec![];
     while let Some(token) = reader.peek() {
-        if token == &Token::Special(')') {
+        if token == &Token::Special(closing) {
             reader.next();
             paren_matched = true;
             break;
@@ -187,12 +187,11 @@ fn read_list(reader: &mut Reader) -> Result<MalType, Error> {
     }
 
     if paren_matched {
-        Ok(MalType::List(elements))
+        consumer(elements)
     } else {
         Err(Error::UnbalancedList)
     }
 }
-
 
 fn read_atom(token: Token) -> MalType {
     match token {
@@ -202,7 +201,7 @@ fn read_atom(token: Token) -> MalType {
         Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
         Token::Literal(Literal::Str(s))   => MalType::Str(s),
         Token::Literal(Literal::Nil)      => MalType::Nil,
-        _                                 => MalType::Unimplemented,
+        _                                 => unimplemented!(),
     }
 }
 

@@ -2,8 +2,8 @@ use std::fmt;
 
 #[derive(Clone)]
 pub(crate) enum MalType {
-    Unimplemented, // TODO remove
     List(Vec<MalType>),
+    Vector(Vec<MalType>),
     Symbol(String),
     Int(i64),
     Float(f64),
@@ -21,8 +21,8 @@ impl fmt::Debug for MalType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use MalType::*;
         match self {
-            Unimplemented => write!(fmt, "Unimplemented"),
             List(x)       => write!(fmt, "List {{ {:?} }}", x),
+            Vector(x)     => write!(fmt, "Vector {{ {:?} }}", x),
             Symbol(x)     => write!(fmt, "Symbol {{ {:?} }}", x),
             Int(x)        => write!(fmt, "Int {{ {:?} }}", x),
             Float(x)      => write!(fmt, "Float {{ {:?} }}", x),
