@@ -37,7 +37,7 @@ use ASTError::*;
 fn eval_def(args: &[AST], env: &mut Env) -> Result<AST, EvalError> {
     if args.len() == 2 {
         if let AST::Symbol(symbol) = &args[0] {
-            let value = eval(args[1].clone(), env)?;
+            let value = eval(&args[1], env)?;
             env.set(symbol.to_string(), value.clone());
             Ok(value)
         } else {
@@ -57,13 +57,13 @@ fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
         if let AST::List(bindings) = &args[0] {
             for let_args in bindings.chunks(2) {
                 if let AST::Symbol(symbol) = &let_args[0] {
-                    let value = eval(let_args[1].clone(), &mut new_env)?;
+                    let value = eval(&let_args[1], &mut new_env)?;
                     new_env.set(symbol.to_string(), value);
                 } else {
                     return Err(CanOnlyLetSymbol(let_args[0].clone()));
                 }
             }
-            eval(args[1].clone(), &mut new_env)
+            eval(&args[1], &mut new_env)
         } else {
             unimplemented!()
         }
@@ -75,11 +75,11 @@ fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_ast(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
-    match ast.clone() {
+fn eval_ast(ast: &AST, env: &mut Env) -> Result<AST, EvalError> {
+    match ast {
         AST::Symbol(symbol) => {
-            Ok(env.get(&symbol)
-                .unwrap_or(ast))
+            Ok(env.get(&symbol[..])
+                .unwrap_or(ast).clone())
         }
 
         AST::List(elements) => {
@@ -91,11 +91,11 @@ fn eval_ast(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
             Ok(AST::List(evals))
         }
 
-        ast @ _ => Ok(ast),
+        ast @ _ => Ok(ast.clone()),
     }
 }
 
-fn eval_apply(ast: AST) -> Result<AST, EvalError> {
+fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
     if let AST::List(elems) = ast {
         match &elems[0] {
             AST::NativeFunc { func, .. } => func(&elems[1..]).map_err(ASTError),
@@ -107,8 +107,8 @@ fn eval_apply(ast: AST) -> Result<AST, EvalError> {
     }
 }
 
-fn eval(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
-    if let AST::List(elems) = ast.clone() {
+fn eval(ast: &AST, env: &mut Env) -> Result<AST, EvalError> {
+    if let AST::List(elems) = ast {
         if !elems.is_empty() {
             if let AST::Symbol(symbol) = &elems[0] {
                 if symbol == "def!" {
@@ -117,7 +117,7 @@ fn eval(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
                     return eval_let(&elems[1..], env);
                 }
             }
-            eval_apply(eval_ast(ast, env)?)
+            eval_apply(&eval_ast(ast, env)?)
         } else {
             Ok(AST::List(vec![]))
         }
@@ -126,18 +126,18 @@ fn eval(ast: AST, env: &mut Env) -> Result<AST, EvalError> {
     }
 }
 
-fn print(ast: AST) -> String {
+fn print(ast: &AST) -> String {
     printer::pr_str(&ast)
 }
 
-fn eval_print(ast: AST, env: &mut Env) -> String {
+fn eval_print(ast: &AST, env: &mut Env) -> String {
     match eval(ast, env) {
-        Ok(ast) => print(ast),
+        Ok(ast) => print(&ast),
         Err(e)  => {
             match e {
-                CanOnlyDefSymbol(ast)  => format!("can only def! symbols (not '{}')", print(ast)),
-                CanOnlyLetSymbol(ast)  => format!("can only let! symbols (not '{}')", print(ast)),
-                NotEvaluable(ast)      => format!("cannot evaluate '{}'", print(ast)),
+                CanOnlyDefSymbol(ast)  => format!("can only def! symbols (not '{}')", print(&ast)),
+                CanOnlyLetSymbol(ast)  => format!("can only let! symbols (not '{}')", print(&ast)),
+                NotEvaluable(ast)      => format!("cannot evaluate '{}'", print(&ast)),
                 SymbolNotFound(symbol) => format!("symbol '{}' not found", symbol),
                 ASTError(TypeCheckFailed {}) => format!("typecheck failed"),
                 ASTError(ArityError { expected, reached }) =>
@@ -149,7 +149,7 @@ fn eval_print(ast: AST, env: &mut Env) -> String {
 
 fn rep(s: &str, env: &mut Env) -> String {
     match read(s) {
-        Ok(Some(ast))         => eval_print(ast, env),
+        Ok(Some(ast))         => eval_print(&ast, env),
         Ok(None)              => "EOF".to_string(),
         Err(UnbalancedString) => "unbalanced string".to_string(),
         Err(UnbalancedList)   => "unbalanced list".to_string(),
@@ -193,5 +193,3 @@ fn main() -> io::Result<()> {
 
     Ok(())
 }
-
-

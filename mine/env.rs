@@ -25,13 +25,15 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<MalType>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&MalType>
         where String: Borrow<Q>,
               Q: Hash + Eq,
     {
         self.data.get(key)
-            .map(Clone::clone)
-            .or_else(|| self.outer.as_ref().and_then(|outer| outer.get(key)))
+            .or_else(|| {
+                self.outer.as_ref()
+                    .and_then(|outer| outer.get(key))
+            })
     }
 
     pub fn set(&mut self, key: String, value: MalType) {
