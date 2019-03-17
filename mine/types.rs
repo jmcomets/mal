@@ -1,4 +1,5 @@
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) enum MalType {
@@ -10,6 +11,7 @@ pub(crate) enum MalType {
     Bool(bool),
     Str(String),
     Nil,
+    Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
     NativeFunc {
         name: &'static str,
         signature: (Vec<&'static str>, &'static str),
@@ -21,14 +23,15 @@ impl fmt::Debug for MalType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use MalType::*;
         match self {
-            List(x)       => write!(fmt, "List {{ {:?} }}", x),
-            Vector(x)     => write!(fmt, "Vector {{ {:?} }}", x),
-            Symbol(x)     => write!(fmt, "Symbol {{ {:?} }}", x),
-            Int(x)        => write!(fmt, "Int {{ {:?} }}", x),
-            Float(x)      => write!(fmt, "Float {{ {:?} }}", x),
-            Bool(x)       => write!(fmt, "Bool {{ {:?} }}", x),
-            Str(x)        => write!(fmt, "Str {{ {:?} }}", x),
-            Nil           => write!(fmt, "Nil"),
+            List(x)                            => write!(fmt, "List {{ {:?} }}", x),
+            Vector(x)                          => write!(fmt, "Vector {{ {:?} }}", x),
+            Symbol(x)                          => write!(fmt, "Symbol {{ {:?} }}", x),
+            Int(x)                             => write!(fmt, "Int {{ {:?} }}", x),
+            Float(x)                           => write!(fmt, "Float {{ {:?} }}", x),
+            Bool(x)                            => write!(fmt, "Bool {{ {:?} }}", x),
+            Str(x)                             => write!(fmt, "Str {{ {:?} }}", x),
+            Nil                                => write!(fmt, "Nil"),
+            Function(_)                        => write!(fmt, "Function(...)"),
             NativeFunc { name, signature, .. } => {
                 fmt.debug_struct("NativeFunc")
                     .field("name", name)

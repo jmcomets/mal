@@ -3,15 +3,15 @@ use crate::types::MalType;
 pub(crate) fn pr_str(t: &MalType) -> String {
     use MalType::*;
     match t {
-        List(elements) => pr_list(elements, "(", ")"),
-        Vector(elements) => pr_list(elements, "[", "]"),
-        Symbol(s) => s.clone(),
-        Int(i)    => i.to_string(),
-        Float(f)  => f.to_string(),
-        Bool(b)   => b.to_string(),
-        Str(s)    => "\"".to_string() + s + "\"",
-        Nil       => "nil".to_string(),
-
+        List(elements)          => pr_list(elements, "(", ")"),
+        Vector(elements)        => pr_list(elements, "[", "]"),
+        Symbol(s)               => s.clone(),
+        Int(i)                  => i.to_string(),
+        Float(f)                => f.to_string(),
+        Bool(b)                 => b.to_string(),
+        Str(s)                  => "\"".to_string() + s + "\"",
+        Nil                     => "nil".to_string(),
+        Function(_)             => "#<function>".to_string(),
         NativeFunc { name, .. } => name.to_string(),
     }
 }
