@@ -45,6 +45,7 @@ impl fmt::Debug for MalType {
 pub(crate) type MalResult = Result<MalType, MalError>;
 
 pub(crate) enum MalError {
+    CallError,
     TypeCheckFailed {
         // expected: Vec<String>,
         // reached: String,

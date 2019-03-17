@@ -1,10 +1,11 @@
 // #![deny(warnings)]
 
+use std::io;
+use std::rc::Rc;
+
 #[macro_use] extern crate lazy_static;
 
 use rustyline::{Editor, error::ReadlineError};
-
-use std::io;
 
 mod printer;
 mod reader;
@@ -34,11 +35,14 @@ use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-fn eval_def(args: &[AST], env: &mut Env) -> Result<AST, EvalError> {
+type RcEnv = Rc<Env>;
+
+fn eval_def(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
     if args.len() == 2 {
         if let AST::Symbol(symbol) = &args[0] {
             let value = eval(&args[1], env)?;
-            env.set(symbol.to_string(), value.clone());
+            Rc::make_mut(env)
+                .set(symbol.to_string(), value.clone());
             Ok(value)
         } else {
             Err(CanOnlyDefSymbol(args[0].clone()))
@@ -51,15 +55,16 @@ fn eval_def(args: &[AST], env: &mut Env) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
-    let mut new_env = Env::wrap(env);
+fn eval_let(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
     if args.len() == 2 {
         match &args[0] {
             AST::List(bindings) | AST::Vector(bindings) => {
+                let mut new_env = Rc::new(Env::wrap(Rc::clone(env)));
                 for let_args in bindings.chunks(2) {
                     if let AST::Symbol(symbol) = &let_args[0] {
                         let value = eval(&let_args[1], &mut new_env)?;
-                        new_env.set(symbol.to_string(), value);
+                        Rc::make_mut(&mut new_env)
+                            .set(symbol.to_string(), value);
                     } else {
                         return Err(CanOnlyLetSymbol(let_args[0].clone()));
                     }
@@ -76,7 +81,7 @@ fn eval_let(args: &[AST], env: &Env) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_ast(ast: &AST, env: &mut Env) -> Result<AST, EvalError> {
+fn eval_ast(ast: &AST, env: &mut RcEnv) -> Result<AST, EvalError> {
     match ast {
         AST::Symbol(symbol) => {
             Ok(env.get(&symbol[..])
@@ -117,7 +122,7 @@ fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
     }
 }
 
-fn eval(ast: &AST, env: &mut Env) -> Result<AST, EvalError> {
+fn eval(ast: &AST, env: &mut RcEnv) -> Result<AST, EvalError> {
     if let AST::List(elems) = ast {
         if !elems.is_empty() {
             if let AST::Symbol(symbol) = &elems[0] {
@@ -140,16 +145,17 @@ fn print(ast: &AST) -> String {
     printer::pr_str(&ast)
 }
 
-fn eval_print(ast: &AST, env: &mut Env) -> String {
+fn eval_print(ast: &AST, env: &mut RcEnv) -> String {
     match eval(ast, env) {
         Ok(ast) => print(&ast),
         Err(e)  => {
             match e {
-                CanOnlyDefSymbol(ast)  => format!("can only def! symbols (not '{}')", print(&ast)),
-                CanOnlyLetSymbol(ast)  => format!("can only let! symbols (not '{}')", print(&ast)),
-                NotEvaluable(ast)      => format!("cannot evaluate '{}'", print(&ast)),
-                SymbolNotFound(symbol) => format!("symbol '{}' not found", symbol),
-                ASTError(TypeCheckFailed {}) => format!("typecheck failed"),
+                CanOnlyDefSymbol(ast)                      => format!("can only def! symbols (not '{}')", print(&ast)),
+                CanOnlyLetSymbol(ast)                      => format!("can only let! symbols (not '{}')", print(&ast)),
+                NotEvaluable(ast)                          => format!("cannot evaluate '{}'", print(&ast)),
+                SymbolNotFound(symbol)                     => format!("symbol '{}' not found", symbol),
+                ASTError(TypeCheckFailed {})               => format!("typecheck failed"),
+                ASTError(CallError)                        => format!("call error"),
                 ASTError(ArityError { expected, reached }) =>
                     format!("arity error, tried to call symbol expecting {} arguments with {}", reached, expected),
             }
@@ -157,7 +163,7 @@ fn eval_print(ast: &AST, env: &mut Env) -> String {
     }
 }
 
-fn rep(s: &str, env: &mut Env) -> String {
+fn rep(s: &str, env: &mut RcEnv) -> String {
     match read(s) {
         Ok(Some(ast))         => eval_print(&ast, env),
         Ok(None)              => "EOF".to_string(),
@@ -166,7 +172,7 @@ fn rep(s: &str, env: &mut Env) -> String {
     }
 }
 
-fn default_env() -> Env<'static> {
+fn default_env() -> Env {
     let mut env = Env::new();
     env.set("+".to_string(), binary_operator!(Int + Int -> Int));
     env.set("-".to_string(), binary_operator!(Int - Int -> Int));
@@ -180,7 +186,7 @@ fn main() -> io::Result<()> {
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let mut env = default_env();
+    let mut env = Rc::new(default_env());
 
     // let mut line = String::new();
     loop {

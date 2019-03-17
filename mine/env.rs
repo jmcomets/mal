@@ -1,16 +1,17 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::rc::Rc;
 
 use crate::types::MalType;
 
-#[derive(Debug)]
-pub(crate) struct Env<'a> {
-    outer: Option<&'a Env<'a>>,
+#[derive(Clone, Debug)]
+pub(crate) struct Env {
+    outer: Option<Rc<Env>>,
     data: HashMap<String, MalType>,
 }
 
-impl<'a> Env<'a> {
+impl Env {
     pub fn new() -> Self {
         Env {
             outer: None,
@@ -18,7 +19,7 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn wrap(outer: &'a Env) -> Self {
+    pub fn wrap(outer: Rc<Env>) -> Self {
         Env {
             outer: Some(outer),
             data: HashMap::new(),
