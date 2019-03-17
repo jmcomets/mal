@@ -16,10 +16,10 @@ pub(crate) fn pr_str(t: &MalType) -> String {
     }
 }
 
-fn pr_list(elements: &[MalType], opening: &str, closing: &str) -> String {
+fn pr_list<'a, It: IntoIterator<Item=&'a MalType>>(elements: It, opening: &str, closing: &str) -> String {
     let mut s = String::new();
     s += opening;
-    for (i, elem) in elements.iter().enumerate() {
+    for (i, elem) in elements.into_iter().enumerate() {
         if i != 0 {
             s += " ";
         }
