@@ -11,6 +11,7 @@ mod printer;
 mod reader;
 #[macro_use] mod types;
 mod env;
+mod core;
 
 use env::Env;
 
@@ -266,21 +267,17 @@ fn rep(s: &str, env: &mut RcEnv) -> String {
     }
 }
 
-fn default_env() -> Env {
-    let mut env = Env::new();
-    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
-    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
-    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
-    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
-    env
-}
-
 fn main() -> io::Result<()> {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let mut env = Rc::new(default_env());
+    let mut env = Env::new();
+    for (symbol, value) in core::ns() {
+        env.set(symbol, value);
+    }
+
+    let mut env = Rc::new(env);
 
     // let mut line = String::new();
     loop {
