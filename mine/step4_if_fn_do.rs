@@ -1,7 +1,6 @@
 // #![deny(warnings)]
 
 use std::io;
-use std::rc::Rc;
 
 #[macro_use] extern crate lazy_static;
 
@@ -13,7 +12,8 @@ mod reader;
 mod env;
 mod core;
 
-use env::Env;
+use std::rc::Rc;
+use env::{Env, EnvRef};
 
 use types::{
     MalType as AST,
@@ -36,14 +36,11 @@ use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-type RcEnv = Rc<Env>;
-
-fn eval_def(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
+fn eval_def(args: &[AST], env: &mut EnvRef) -> Result<AST, EvalError> {
     if args.len() == 2 {
         if let AST::Symbol(symbol) = &args[0] {
             let value = eval(&args[1], env)?;
-            Rc::make_mut(env)
-                .set(symbol.to_string(), value.clone());
+            env.set(symbol.to_string(), value.clone());
             Ok(value)
         } else {
             Err(CanOnlyDefSymbol(args[0].clone()))
@@ -56,16 +53,15 @@ fn eval_def(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_let(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
+fn eval_let(args: &[AST], env: &EnvRef) -> Result<AST, EvalError> {
     if args.len() == 2 {
         match &args[0] {
             AST::List(bindings) | AST::Vector(bindings) => {
-                let mut new_env = Rc::new(Env::wrap(Rc::clone(env)));
+                let mut new_env = EnvRef::refer_to(env.clone());
                 for let_args in bindings.chunks(2) {
                     if let AST::Symbol(symbol) = &let_args[0] {
                         let value = eval(&let_args[1], &mut new_env)?;
-                        Rc::make_mut(&mut new_env)
-                            .set(symbol.to_string(), value);
+                        new_env.set(symbol.to_string(), value);
                     } else {
                         return Err(CanOnlyLetSymbol(let_args[0].clone()));
                     }
@@ -82,7 +78,7 @@ fn eval_let(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_do(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
+fn eval_do(args: &[AST], env: &mut EnvRef) -> Result<AST, EvalError> {
     let mut ret = AST::Nil;
     for arg in args {
         ret = eval(arg, env)?;
@@ -90,7 +86,7 @@ fn eval_do(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
     Ok(ret)
 }
 
-fn eval_if(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
+fn eval_if(args: &[AST], env: &mut EnvRef) -> Result<AST, EvalError> {
     if args.len() < 2 {
         return Err(ASTError(ArityError {
             expected: 2,
@@ -106,7 +102,7 @@ fn eval_if(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
     }
 
     // A temporary env is used to prevent mutation when evaluating the condition
-    let mut condition_env = Rc::new(Env::wrap(Rc::clone(env)));
+    let mut condition_env = EnvRef::refer_to(env.clone());
 
     match eval(&args[0], &mut condition_env)? {
         AST::Nil | AST::Bool(false) => {
@@ -121,7 +117,7 @@ fn eval_if(args: &[AST], env: &mut RcEnv) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_fn(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
+fn eval_fn(args: &[AST], env: &EnvRef) -> Result<AST, EvalError> {
     if args.len() != 2 {
         return Err(ASTError(ArityError {
             expected: 2,
@@ -143,7 +139,7 @@ fn eval_fn(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
             }
 
             let body = args[1].clone();
-            let captured_env = Rc::new(Env::wrap(Rc::clone(env)));
+            let captured_env = EnvRef::refer_to(env.clone());
             let f = move |args: &[AST]| -> Result<AST, ASTError> {
                 if args.len() != symbols.len() {
                     return Err(ArityError {
@@ -152,12 +148,12 @@ fn eval_fn(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
                     });
                 }
 
-                let mut call_env = Env::wrap(Rc::clone(&captured_env));
+                let mut call_env = EnvRef::refer_to(captured_env.clone());
                 for (symbol, value) in symbols.iter().zip(args.iter()) {
                     call_env.set(symbol.clone(), value.clone());
                 }
 
-                eval(&body, &mut Rc::new(call_env))
+                eval(&body, &mut call_env)
                     .map_err(|_| CallError)
             };
 
@@ -168,11 +164,11 @@ fn eval_fn(args: &[AST], env: &RcEnv) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_ast(ast: &AST, env: &mut RcEnv) -> Result<AST, EvalError> {
+fn eval_ast(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
     match ast {
         AST::Symbol(symbol) => {
             Ok(env.get(&symbol[..])
-                .unwrap_or(ast).clone())
+                .unwrap_or(ast.clone()))
         }
 
         AST::List(elements) => {
@@ -210,7 +206,7 @@ fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
     }
 }
 
-fn eval(ast: &AST, env: &mut RcEnv) -> Result<AST, EvalError> {
+fn eval(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
     if let AST::List(elems) = ast {
         if !elems.is_empty() {
             if let AST::Symbol(symbol) = &elems[0] {
@@ -240,7 +236,7 @@ fn print(ast: &AST) -> String {
     printer::pr_str(&ast)
 }
 
-fn eval_print(ast: &AST, env: &mut RcEnv) -> String {
+fn eval_print(ast: &AST, env: &mut EnvRef) -> String {
     match eval(ast, env) {
         Ok(ast) => print(&ast),
         Err(e)  => {
@@ -258,7 +254,7 @@ fn eval_print(ast: &AST, env: &mut RcEnv) -> String {
     }
 }
 
-fn rep(s: &str, env: &mut RcEnv) -> String {
+fn rep(s: &str, env: &mut EnvRef) -> String {
     match read(s) {
         Ok(Some(ast))         => eval_print(&ast, env),
         Ok(None)              => "EOF".to_string(),
@@ -277,7 +273,7 @@ fn main() -> io::Result<()> {
         env.set(symbol, value);
     }
 
-    let mut env = Rc::new(env);
+    let mut env = EnvRef::new(env);
 
     // let mut line = String::new();
     loop {
