@@ -1,5 +1,9 @@
 use crate::types::MalType;
 
+pub(crate) fn pr_readably(t: &MalType) {
+    println!("{}", pr_str(t));
+}
+
 pub(crate) fn pr_str(t: &MalType) -> String {
     use MalType::*;
     match t {

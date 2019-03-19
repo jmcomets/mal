@@ -134,6 +134,16 @@ macro_rules! bind_args {
 
 #[allow(unused_macros)]
 macro_rules! function {
+    ($($arg:tt),* -> Nil $body:block) => {
+        make_function!({
+            |args: &[MalType]| -> MalResult {
+                bind_args!(args, $($arg),*);
+                $body;
+                Ok(Nil)
+            }
+        })
+    };
+
     ($($arg:tt),* -> $rettype:tt $body:block) => {
         make_function!({
             |args: &[MalType]| -> MalResult {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crate::types::MalType;
+use crate::printer::pr_readably;
 
 pub(crate) fn ns() -> HashMap<String, MalType> {
     let mut symbols = HashMap::new();
@@ -42,6 +43,10 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
 
     symbols.insert("count".to_string(), function!(ls -> Int {
         if let List(ls) = ls { Ok(ls.len() as i64) } else { Err(TypeCheckFailed{}) }
+    }));
+
+    symbols.insert("prn".to_string(), function!(x -> Nil {
+        pr_readably(x);
     }));
 
     symbols
