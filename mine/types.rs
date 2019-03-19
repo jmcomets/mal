@@ -12,11 +12,6 @@ pub(crate) enum MalType {
     Str(String),
     Nil,
     Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
-    NativeFunc {
-        name: &'static str,
-        signature: (Vec<&'static str>, &'static str),
-        func: fn(&[MalType]) -> MalResult,
-    }
 }
 
 impl fmt::Debug for MalType {
@@ -57,33 +52,70 @@ pub(crate) enum MalError {
     }
 }
 
-macro_rules! binary_operator {
-    ($left:tt $op:tt $right:tt -> $out:tt) => {
-            $crate::types::MalType::NativeFunc {
-                name: stringify!($op),
-                signature: (vec![stringify!($left), stringify!($right)], stringify!($out)),
-                func: {
-                    use $crate::types::{
-                        MalType::{self, *},
-                        MalError::*,
-                        MalResult,
+macro_rules! function {
+    ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
+        $crate::types::MalType::Function(std::rc::Rc::new({
+            use $crate::types::{
+                MalType::{self, *},
+                MalError::*,
+                MalResult,
+            };
+
+            |args: &[MalType]| -> MalResult {
+                let nb_args = 0 $(+ {stringify!($arg); 1})*;
+                if args.len() != nb_args {
+                    return Err(ArityError {
+                        expected: nb_args,
+                        reached: args.len(),
+                    });
+                }
+
+                let mut arg_index = 0;
+                $(
+                    let $arg = {
+                        if let $argtype($arg) = args[arg_index] {
+                            $arg
+                        } else {
+                            return Err(TypeCheckFailed{});
+                        }
                     };
 
-                    |args: &[MalType]| -> MalResult {
-                        if args.len() != 2 {
-                            return Err(ArityError {
-                                expected: 2,
-                                reached: args.len(),
-                            });
-                        }
-
-                        if let ($left(lhs), $right(rhs)) = (&args[0], &args[1]) {
-                            Ok($out(lhs $op rhs))
-                        } else {
-                            Err(TypeCheckFailed{})
-                        }
+                    #[allow(unused)] {
+                        arg_index += 1;
                     }
-                },
+                )*
+
+                Ok($rettype($body))
             }
+        }))
+    }
+}
+
+macro_rules! function_chain {
+    ($($f:expr),*) => {
+        $crate::types::MalType::Function(std::rc::Rc::new({
+            use $crate::types::{
+                MalType,
+                MalError::*,
+                MalResult,
+            };
+
+            |args: &[MalType]| -> MalResult {
+                $(
+                    match $f(args) {
+                        Err(TypeCheckFailed{}) => {},
+                        ret @ Ok(_) | Err(_)   => return ret,
+                    }
+                )*
+
+                Err(TypeCheckFailed{})
+            }
+        }))
+    }
+}
+
+macro_rules! binary_operator {
+    ($left:tt $op:tt $right:tt -> $out:tt) => {
+        function!(a: $left, b: $right -> $out { a $op b })
     }
 }

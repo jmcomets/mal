@@ -12,7 +12,6 @@ pub(crate) fn pr_str(t: &MalType) -> String {
         Str(s)                  => "\"".to_string() + s + "\"",
         Nil                     => "nil".to_string(),
         Function(_)             => "#<function>".to_string(),
-        NativeFunc { name, .. } => name.to_string(),
     }
 }
 

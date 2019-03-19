@@ -196,7 +196,6 @@ fn eval_ast(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
 fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
     if let AST::List(elems) = ast {
         match &elems[0] {
-            AST::NativeFunc { func, .. } => func(&elems[1..]).map_err(ASTError),
             AST::Function(func)          => func(&elems[1..]).map_err(ASTError),
             AST::Symbol(symbol)          => Err(SymbolNotFound(symbol.to_string())),
             ast @ _                      => Err(NotEvaluable(ast.clone())),
