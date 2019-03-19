@@ -28,18 +28,34 @@ impl fmt::Debug for MalType {
             Str(x)                             => write!(fmt, "Str {{ {:?} }}", x),
             Nil                                => write!(fmt, "Nil"),
             Function(_)                        => write!(fmt, "Function(...)"),
-            NativeFunc { name, signature, .. } => {
-                fmt.debug_struct("NativeFunc")
-                    .field("name", name)
-                    .field("signature", signature)
-                    .finish()
-            }
+        }
+    }
+}
+
+impl PartialEq for MalType {
+    fn eq(&self, other: &Self) -> bool {
+        use MalType::*;
+        match (self, other) {
+            (Int(a), Int(b))       => a == b,
+            (Float(a), Float(b))   => a == b,
+            (Float(a), Int(b))     => *a == (*b as f64),
+            (Int(a), Float(b))     => (*a as f64) == *b,
+            (Bool(a), Bool(b))     => a == b,
+            (Str(a), Str(b))       => a == b,
+            (Vector(a), Vector(b)) => a == b,
+            (List(a), List(b))     => a == b,
+            (Symbol(a), Symbol(b)) => a == b,
+            (Function(_), _)       => false,
+            (_, Function(_))       => false,
+            (Nil, Nil)             => true,
+            _                      => false,
         }
     }
 }
 
 pub(crate) type MalResult = Result<MalType, MalError>;
 
+#[allow(unused)]
 pub(crate) enum MalError {
     CallError,
     TypeCheckFailed {
@@ -56,44 +72,81 @@ pub(crate) enum MalError {
 #[allow(unused_macros)]
 macro_rules! make_function {
     ($f:expr) => {
-        $crate::types::MalType::Function(std::rc::Rc::new($f))
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! function {
-    ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
-        make_function!({
+        {
+            #[allow(unused_imports)]
             use $crate::types::{
                 MalType::{self, *},
                 MalError::*,
                 MalResult,
             };
 
-            |args: &[MalType]| -> MalResult {
-                let nb_args = 0 $(+ {stringify!($arg); 1})*;
-                if args.len() != nb_args {
-                    return Err(ArityError {
-                        expected: nb_args,
-                        reached: args.len(),
-                    });
+            Function(std::rc::Rc::new($f))
+        }
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! bind_args {
+    ($args:expr, $($binding:tt),*) => {
+        let nb_args = 0 $(+ {stringify!($binding); 1})*;
+        if $args.len() != nb_args {
+            return Err(ArityError {
+                expected: nb_args,
+                reached: $args.len(),
+            });
+        }
+
+        let mut arg_index = 0;
+        $(
+            let $binding = &$args[arg_index];
+
+            #[allow(unused)] {
+                arg_index += 1;
+            }
+        )*
+    };
+
+    ($args:expr, $($arg:tt : $argtype:tt),*) => {
+        let nb_args = 0 $(+ {stringify!($arg); 1})*;
+        if $args.len() != nb_args {
+            return Err(ArityError {
+                expected: nb_args,
+                reached: $args.len(),
+            });
+        }
+
+        let mut arg_index = 0;
+        $(
+            let $arg = {
+                if let $argtype($arg) = $args[arg_index] {
+                    $arg
+                } else {
+                    return Err(TypeCheckFailed{});
                 }
+            };
 
-                let mut arg_index = 0;
-                $(
-                    let $arg = {
-                        if let $argtype($arg) = args[arg_index] {
-                            $arg
-                        } else {
-                            return Err(TypeCheckFailed{});
-                        }
-                    };
+            #[allow(unused)] {
+                arg_index += 1;
+            }
+        )*
+    }
+}
 
-                    #[allow(unused)] {
-                        arg_index += 1;
-                    }
-                )*
+#[allow(unused_macros)]
+macro_rules! function {
+    ($($arg:tt),* -> $rettype:tt $body:block) => {
+        make_function!({
+            |args: &[MalType]| -> MalResult {
+                bind_args!(args, $($arg),*);
+                $body.map($rettype)
+            }
+        })
+    };
 
+    ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
+        make_function!({
+            |args: &[MalType]| -> MalResult {
+                bind_args!(args, $($arg : $argtype),*);
                 Ok($rettype($body))
             }
         })
@@ -104,12 +157,6 @@ macro_rules! function {
 macro_rules! function_chain {
     ($($f:expr),*) => {
         make_function!({
-            use $crate::types::{
-                MalType::{self, Function},
-                MalError::*,
-                MalResult,
-            };
-
             let functions = vec![$($f, )*];
 
             move |args: &[MalType]| -> MalResult {
