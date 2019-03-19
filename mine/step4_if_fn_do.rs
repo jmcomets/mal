@@ -232,7 +232,7 @@ fn eval(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
 }
 
 fn print(ast: &AST) -> String {
-    printer::pr_str(&ast)
+    printer::pr_str(&ast, true)
 }
 
 fn eval_print(ast: &AST, env: &mut EnvRef) -> String {

@@ -62,7 +62,7 @@ fn eval(ast: types::MalType, repl_env: &ReplEnv) -> Result<types::MalType, EvalE
 }
 
 fn print(t: types::MalType) -> String {
-    printer::pr_str(&t)
+    printer::pr_str(&t, true)
 }
 
 fn rep(s: &str) -> String {

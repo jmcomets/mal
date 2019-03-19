@@ -20,7 +20,7 @@ fn eval(t: types::MalType) -> types::MalType {
 }
 
 fn print(t: types::MalType) -> String {
-    printer::pr_str(&t)
+    printer::pr_str(&t, true)
 }
 
 fn rep(s: &str) -> String {

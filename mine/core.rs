@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::types::MalType;
-use crate::printer::pr_readably;
+use crate::printer::pr_str;
 
 pub(crate) fn ns() -> HashMap<String, MalType> {
     let mut symbols = HashMap::new();
@@ -32,7 +32,11 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     }));
 
     symbols.insert("empty?".to_string(), function!(ls -> Bool {
-        Ok(if let List(ls) = ls { ls.is_empty() } else { false })
+        match ls {
+            Nil                   => Ok(true),
+            List(ls) | Vector(ls) => Ok(ls.is_empty()),
+            _                     => Err(TypeCheckFailed{}),
+        }
     }));
 
     symbols.insert("list".to_string(), make_function!(
@@ -42,12 +46,65 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     ));
 
     symbols.insert("count".to_string(), function!(ls -> Int {
-        if let List(ls) = ls { Ok(ls.len() as i64) } else { Err(TypeCheckFailed{}) }
+        match ls {
+            Nil                   => Ok(0),
+            List(ls) | Vector(ls) => Ok(ls.len() as i64),
+            _                     => Err(TypeCheckFailed{}),
+        }
     }));
 
-    symbols.insert("prn".to_string(), function!(x -> Nil {
-        pr_readably(x);
-    }));
+    symbols.insert("pr-str".to_string(), make_function!(
+            |args: &[MalType]| -> MalResult {
+                Ok(Str({
+                    let mut s = String::new();
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            s += " ";
+                        }
+                        s += &pr_str(arg, true);
+                    }
+                    s
+                }))
+            }
+    ));
+
+    symbols.insert("str".to_string(), make_function!(
+            |args: &[MalType]| -> MalResult {
+                Ok(Str({
+                    let mut s = String::new();
+                    for arg in args.iter() {
+                        s += &pr_str(arg, false);
+                    }
+                    s
+                }))
+            }
+    ));
+
+    symbols.insert("prn".to_string(), make_function!(
+            |args: &[MalType]| -> MalResult {
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        print!(" ");
+                    }
+                    print!("{}", pr_str(arg, true));
+                }
+                println!();
+                Ok(Nil)
+            }
+    ));
+
+    symbols.insert("println".to_string(), make_function!(
+            |args: &[MalType]| -> MalResult {
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        print!(" ");
+                    }
+                    print!("{}", pr_str(arg, false));
+                }
+                println!();
+                Ok(Nil)
+            }
+    ));
 
     symbols
 }
