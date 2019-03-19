@@ -11,6 +11,7 @@ pub(crate) enum MalType {
     Bool(bool),
     Str(String),
     Nil,
+    #[allow(dead_code)]
     Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
 }
 
