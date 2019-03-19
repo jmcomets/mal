@@ -247,7 +247,7 @@ fn eval_print(ast: &AST, env: &mut EnvRef) -> String {
                 ASTError(CallError)                        => format!("call error"),
                 ASTError(TypeCheckFailed {})               => format!("typecheck failed"),
                 ASTError(ArityError { expected, reached }) =>
-                    format!("arity error, tried to call symbol expecting {} arguments with {}", reached, expected),
+                    format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
             }
         }
     }
