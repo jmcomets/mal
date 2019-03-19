@@ -52,9 +52,17 @@ pub(crate) enum MalError {
     }
 }
 
+#[allow(unused_macros)]
+macro_rules! make_function {
+    ($f:expr) => {
+        $crate::types::MalType::Function(std::rc::Rc::new($f))
+    }
+}
+
+#[allow(unused_macros)]
 macro_rules! function {
     ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
-        $crate::types::MalType::Function(std::rc::Rc::new({
+        make_function!({
             use $crate::types::{
                 MalType::{self, *},
                 MalError::*,
@@ -87,35 +95,67 @@ macro_rules! function {
 
                 Ok($rettype($body))
             }
-        }))
+        })
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! function_chain {
     ($($f:expr),*) => {
-        $crate::types::MalType::Function(std::rc::Rc::new({
+        make_function!({
             use $crate::types::{
-                MalType,
+                MalType::{self, Function},
                 MalError::*,
                 MalResult,
             };
 
-            |args: &[MalType]| -> MalResult {
-                $(
-                    match $f(args) {
-                        Err(TypeCheckFailed{}) => {},
-                        ret @ Ok(_) | Err(_)   => return ret,
+            let functions = vec![$($f, )*];
+
+            move |args: &[MalType]| -> MalResult {
+                for f in functions.iter() {
+                    if let Function(f) = f {
+                        match f(args) {
+                            Err(TypeCheckFailed{}) => {},
+                            ret @ Ok(_) | ret @ Err(_)   => return ret,
+                        }
+                    } else {
+                        panic!("expected function, got {:?}", f);
                     }
-                )*
+                }
 
                 Err(TypeCheckFailed{})
             }
-        }))
+        })
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! binary_operator {
     ($left:tt $op:tt $right:tt -> $out:tt) => {
         function!(a: $left, b: $right -> $out { a $op b })
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! number_operator {
+    ($op:tt) => {
+        function_chain!(
+            function!(a: Int, b: Int -> Int { a $op b }),
+            function!(a: Float, b: Float -> Float { a $op b }),
+            function!(a: Int, b: Float -> Float { a as f64 $op b }),
+            function!(a: Float, b: Int -> Float { a $op b as f64  })
+        )
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! number_predicate {
+    ($op:tt) => {
+        function_chain!(
+            function!(a: Int, b: Int -> Bool { a $op b }),
+            function!(a: Float, b: Float -> Bool { a $op b }),
+            function!(a: Int, b: Float -> Bool { (a as f64) $op b }),
+            function!(a: Float, b: Int -> Bool { a $op (b as f64)  })
+        )
     }
 }
