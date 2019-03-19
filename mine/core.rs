@@ -18,7 +18,18 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     symbols.insert("inc".to_string(), function!(x: Int -> Int { x + 1 }));
     symbols.insert("dec".to_string(), function!(x: Int -> Int { x - 1 }));
 
-    symbols.insert("not".to_string(), function!(pred: Bool -> Bool { !pred }));
+    symbols.insert("not".to_string(), function!(x -> Bool {
+        Ok({
+            match x {
+                Bool(p)               => !p,
+                Int(n)                => !(*n == 0),
+                Float(n)              => !(*n == 0.),
+                List(ls) | Vector(ls) => !ls.is_empty(),
+                Nil                   => true,
+                _                     => false,
+            }
+        })
+    }));
 
     symbols.insert("=".to_string(), function!(a, b -> Bool { Ok(a == b) }));
     symbols.insert("!=".to_string(), function!(a, b -> Bool { Ok(a != b) }));
