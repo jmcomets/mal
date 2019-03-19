@@ -65,7 +65,7 @@ impl EnvRef {
     }
 
     pub fn set(&mut self, key: String, value: MalType) {
-        Rc::make_mut(&mut self.0)
+        self.0
             .borrow_mut()
             .set(key, value)
     }
