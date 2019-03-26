@@ -25,18 +25,10 @@ fn read(s: &str) -> Result<Option<AST>, ReadError> {
     reader::read_str(s)
 }
 
-enum EvalError {
-    NotEvaluable(AST),
-    CanOnlyDefineSymbols(AST),
-    CannotBindArguments(AST),
-    SymbolNotFound(String),
-    ASTError(ASTError),
-}
-use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-fn eval_ast_list<T>(elements: T, env: &mut EnvRef) -> Result<Vec<AST>, EvalError>
+fn eval_ast_list<T>(elements: T, env: &mut EnvRef) -> Result<Vec<AST>, ASTError>
     where T: IntoIterator<Item=AST> + FromIterator<AST>
 {
     elements.into_iter()
@@ -44,7 +36,7 @@ fn eval_ast_list<T>(elements: T, env: &mut EnvRef) -> Result<Vec<AST>, EvalError
         .collect()
 }
 
-fn eval_ast(ast: AST, env: &mut EnvRef) -> Result<AST, EvalError> {
+fn eval_ast(ast: AST, env: &mut EnvRef) -> Result<AST, ASTError> {
     match ast.clone() {
         AST::Symbol(symbol)   => Ok(env.get(&symbol[..]).unwrap_or(ast)),
         AST::List(elements)   => eval_ast_list(elements, env).map(AST::List),
@@ -53,10 +45,10 @@ fn eval_ast(ast: AST, env: &mut EnvRef) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
+fn eval_apply(ast: &AST) -> Result<AST, ASTError> {
     if let AST::List(elements) = ast {
         match &elements[0] {
-            AST::Function(func)          => func(&elements[1..]).map_err(ASTError),
+            AST::Function(func)          => func(&elements[1..]),
             AST::Symbol(symbol)          => Err(SymbolNotFound(symbol.to_string())),
             ast @ _                      => Err(NotEvaluable(ast.clone())),
         }
@@ -76,16 +68,16 @@ macro_rules! expect_arity {
             )*
 
             if let Some(expected) = expected {
-                return Err(ASTError(ArityError {
+                return Err(ArityError {
                     expected: expected,
                     reached: $args.len(),
-                }));
+                });
             }
         }
     }
 }
 
-fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, EvalError> {
+fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
     loop {
         if let AST::List(elements) = &ast {
             if elements.is_empty() {
@@ -203,7 +195,6 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, EvalError> {
                                     }
 
                                     eval(fn_body.clone(), call_env)
-                                        .map_err(|_| CallError) // FIXME
                                 });
 
                                 ast = new_ast;
@@ -237,13 +228,12 @@ fn eval_print(ast: AST, env: EnvRef) -> String {
         Ok(ast) => print(&ast),
         Err(e)  => {
             match e {
-                CanOnlyDefineSymbols(ast)                  => format!("can only define symbols (not '{}')", print(&ast)),
-                CannotBindArguments(ast)                   => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
-                NotEvaluable(ast)                          => format!("cannot evaluate '{}'", print(&ast)),
-                SymbolNotFound(symbol)                     => format!("symbol '{}' not found", symbol),
-                ASTError(CallError)                        => format!("call error"),
-                ASTError(TypeCheckFailed {})               => format!("typecheck failed"),
-                ASTError(ArityError { expected, reached }) =>
+                CanOnlyDefineSymbols(ast)        => format!("can only define symbols (not '{}')", print(&ast)),
+                CannotBindArguments(ast)         => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
+                NotEvaluable(ast)                => format!("cannot evaluate '{}'", print(&ast)),
+                SymbolNotFound(symbol)           => format!("symbol '{}' not found", symbol),
+                TypeCheckFailed {}               => format!("typecheck failed"),
+                ArityError { expected, reached } =>
                     format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
             }
         }

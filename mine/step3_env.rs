@@ -23,35 +23,27 @@ fn read(s: &str) -> Result<Option<AST>, ReadError> {
     reader::read_str(s)
 }
 
-enum EvalError {
-    NotEvaluable(AST),
-    CanOnlyDefSymbol(AST),
-    CanOnlyLetSymbol(AST),
-    SymbolNotFound(String),
-    ASTError(ASTError),
-}
-use EvalError::*;
 use ReadError::*;
 use ASTError::*;
 
-fn eval_def(args: &[AST], env: &mut EnvRef) -> Result<AST, EvalError> {
+fn eval_def(args: &[AST], env: &mut EnvRef) -> Result<AST, ASTError> {
     if args.len() == 2 {
         if let AST::Symbol(symbol) = &args[0] {
             let value = eval(&args[1], env)?;
             env.set(symbol.to_string(), value.clone());
             Ok(value)
         } else {
-            Err(CanOnlyDefSymbol(args[0].clone()))
+            Err(CanOnlyDefineSymbols(args[0].clone()))
         }
     } else {
-        Err(ASTError(ArityError {
+        Err(ArityError {
             expected: 2,
             reached: args.len(),
-        }))
+        })
     }
 }
 
-fn eval_let(args: &[AST], env: &EnvRef) -> Result<AST, EvalError> {
+fn eval_let(args: &[AST], env: &EnvRef) -> Result<AST, ASTError> {
     if args.len() == 2 {
         match &args[0] {
             AST::List(bindings) | AST::Vector(bindings) => {
@@ -61,7 +53,7 @@ fn eval_let(args: &[AST], env: &EnvRef) -> Result<AST, EvalError> {
                         let value = eval(&let_args[1], &mut new_env)?;
                         new_env.set(symbol.to_string(), value);
                     } else {
-                        return Err(CanOnlyLetSymbol(let_args[0].clone()));
+                        return Err(CanOnlyDefineSymbols(let_args[0].clone()));
                     }
                 }
                 eval(&args[1], &mut new_env)
@@ -69,14 +61,14 @@ fn eval_let(args: &[AST], env: &EnvRef) -> Result<AST, EvalError> {
             _ => unimplemented!()
         }
     } else {
-        Err(ASTError(ArityError {
+        Err(ArityError {
             expected: 2,
             reached: args.len(),
-        }))
+        })
     }
 }
 
-fn eval_ast(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
+fn eval_ast(ast: &AST, env: &mut EnvRef) -> Result<AST, ASTError> {
     match ast {
         AST::Symbol(symbol) => {
             Ok(env.get(&symbol[..])
@@ -105,7 +97,7 @@ fn eval_ast(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
     }
 }
 
-fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
+fn eval_apply(ast: &AST) -> Result<AST, ASTError> {
     if let AST::List(elems) = ast {
         match &elems[0] {
             AST::Symbol(symbol)          => Err(SymbolNotFound(symbol.to_string())),
@@ -116,7 +108,7 @@ fn eval_apply(ast: &AST) -> Result<AST, EvalError> {
     }
 }
 
-fn eval(ast: &AST, env: &mut EnvRef) -> Result<AST, EvalError> {
+fn eval(ast: &AST, env: &mut EnvRef) -> Result<AST, ASTError> {
     if let AST::List(elems) = ast {
         if !elems.is_empty() {
             if let AST::Symbol(symbol) = &elems[0] {
@@ -144,14 +136,13 @@ fn eval_print(ast: &AST, env: &mut EnvRef) -> String {
         Ok(ast) => print(&ast),
         Err(e)  => {
             match e {
-                CanOnlyDefSymbol(ast)                      => format!("can only def! symbols (not '{}')", print(&ast)),
-                CanOnlyLetSymbol(ast)                      => format!("can only let! symbols (not '{}')", print(&ast)),
-                NotEvaluable(ast)                          => format!("cannot evaluate '{}'", print(&ast)),
-                SymbolNotFound(symbol)                     => format!("symbol '{}' not found", symbol),
-                ASTError(TypeCheckFailed {})               => format!("typecheck failed"),
-                ASTError(CallError)                        => format!("call error"),
-                ASTError(ArityError { expected, reached }) =>
+                CanOnlyDefineSymbols(ast)        => format!("can only def! symbols (not '{}')", print(&ast)),
+                NotEvaluable(ast)                => format!("cannot evaluate '{}'", print(&ast)),
+                SymbolNotFound(symbol)           => format!("symbol '{}' not found", symbol),
+                TypeCheckFailed {}               => format!("typecheck failed"),
+                ArityError { expected, reached } =>
                     format!("arity error, tried to call symbol expecting {} arguments with {}", reached, expected),
+                _                                => unimplemented!(),
             }
         }
     }

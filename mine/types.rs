@@ -57,7 +57,6 @@ pub(crate) type MalResult = Result<MalType, MalError>;
 
 #[allow(unused)]
 pub(crate) enum MalError {
-    CallError,
     TypeCheckFailed {
         // expected: Vec<String>,
         // reached: String,
@@ -66,7 +65,11 @@ pub(crate) enum MalError {
         // symbol: String,
         expected: usize,
         reached: usize,
-    }
+    },
+    NotEvaluable(MalType),
+    CanOnlyDefineSymbols(MalType),
+    CannotBindArguments(MalType),
+    SymbolNotFound(String),
 }
 
 #[allow(unused_macros)]
