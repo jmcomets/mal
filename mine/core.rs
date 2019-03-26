@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+
 use crate::types::MalType;
 use crate::printer::pr_str;
+use crate::reader::read_str;
 
 pub(crate) fn ns() -> HashMap<String, MalType> {
     let mut symbols = HashMap::new();
@@ -114,6 +116,18 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
                 }
                 println!();
                 Ok(Nil)
+            }
+    ));
+
+    symbols.insert("read-string".to_string(), make_function!(
+            |args: &[MalType]| -> MalResult {
+                expect_arity!(args, 1);
+
+                if let Str(s) = &args[0] {
+                    read_str(&s).transpose().unwrap_or(Ok(Nil))
+                } else {
+                    return Err(TypeCheckFailed{});
+                }
             }
     ));
 
