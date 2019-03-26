@@ -7,11 +7,13 @@ use std::iter::FromIterator;
 
 use rustyline::{Editor, error::ReadlineError};
 
+#[macro_use] mod macros;
+
+mod core;
+mod env;
 mod printer;
 mod reader;
-#[macro_use] mod types;
-mod env;
-mod core;
+mod types;
 
 use env::{Env, EnvRef};
 
@@ -54,26 +56,6 @@ fn eval_apply(ast: &AST) -> Result<AST, ASTError> {
         }
     } else {
         unreachable!()
-    }
-}
-
-macro_rules! expect_arity {
-    ($args:expr, $($expected:expr),*) => {
-        #[allow(unused_assignments, unused_variables)] {
-            $(
-                let mut expected = Some($expected);
-                if $args.len() == $expected {
-                    expected = None;
-                }
-            )*
-
-            if let Some(expected) = expected {
-                return Err(ArityError {
-                    expected: expected,
-                    reached: $args.len(),
-                });
-            }
-        }
     }
 }
 

@@ -6,10 +6,11 @@ use std::io;
 
 use rustyline::{Editor, error::ReadlineError};
 
+mod env;
+#[macro_use] mod macros;
 mod printer;
 mod reader;
-#[macro_use] mod types;
-mod env;
+mod types;
 
 use env::{Env, EnvRef};
 
