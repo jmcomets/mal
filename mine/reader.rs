@@ -2,7 +2,7 @@ use std::str::{self, FromStr};
 
 use regex::Regex;
 
-use crate::types::MalType;
+use crate::types::{MalType, MalError};
 
 struct Reader(Vec<Token>);
 
@@ -21,19 +21,13 @@ impl Reader {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub(crate) enum Error {
-    UnbalancedString,
-    UnbalancedList,
-}
-
 const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ReaderParseError;
 
 impl FromStr for Reader {
-    type Err = Error;
+    type Err = MalError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! { static ref RE: Regex = Regex::new(TOKENS_REGEX).unwrap(); }
@@ -60,7 +54,7 @@ const SPECIAL_TWO_CHARS: &str = "@~";
 const COMMENT_CHAR: char = ';';
 
 impl FromStr for Token {
-    type Err = Error;
+    type Err = MalError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // special characters / comments
@@ -80,7 +74,7 @@ impl FromStr for Token {
             Ok(lit) => Ok(Token::Literal(lit)),
 
             Err(LiteralParseError::UnbalancedString) => {
-                Err(Error::UnbalancedString)
+                Err(MalError::UnbalancedString)
             }
 
             _ => {
@@ -154,12 +148,12 @@ impl FromStr for Literal {
     }
 }
 
-pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, Error> {
+pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, MalError> {
     let mut reader = Reader::from_str(s)?;
     read_form(&mut reader)
 }
 
-fn read_form(reader: &mut Reader) -> Result<Option<MalType>, Error> {
+fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
     reader.next()
         .map(|token| {
             match token {
@@ -171,7 +165,7 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, Error> {
         .transpose()
 }
 
-fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -> Result<T, Error>) -> Result<T, Error> {
+fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -> Result<T, MalError>) -> Result<T, MalError> {
     let mut paren_matched = false;
     let mut elements = vec![];
     while let Some(token) = reader.peek() {
@@ -189,7 +183,7 @@ fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -
     if paren_matched {
         consumer(elements)
     } else {
-        Err(Error::UnbalancedList)
+        Err(MalError::UnbalancedList)
     }
 }
 

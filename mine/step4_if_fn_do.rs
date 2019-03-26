@@ -21,13 +21,11 @@ use types::{
     MalType as AST,
     MalError as ASTError,
 };
-use reader::Error as ReadError;
 
-fn read(s: &str) -> Result<Option<AST>, ReadError> {
+fn read(s: &str) -> Result<Option<AST>, ASTError> {
     reader::read_str(s)
 }
 
-use ReadError::*;
 use ASTError::*;
 
 fn eval_def(args: &[AST], env: &mut EnvRef) -> Result<AST, ASTError> {
@@ -251,6 +249,7 @@ fn rep(s: &str, env: &mut EnvRef) -> String {
         Ok(None)              => "EOF".to_string(),
         Err(UnbalancedString) => "unbalanced string".to_string(),
         Err(UnbalancedList)   => "unbalanced list".to_string(),
+        _                     => unimplemented!(),
     }
 }
 

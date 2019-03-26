@@ -70,4 +70,6 @@ pub(crate) enum MalError {
     CanOnlyDefineSymbols(MalType),
     CannotBindArguments(MalType),
     SymbolNotFound(String),
+    UnbalancedString,
+    UnbalancedList,
 }

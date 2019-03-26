@@ -11,7 +11,7 @@ use std::io::{
     Write
 };
 
-fn read(s: &str) -> Result<Option<types::MalType>, reader::Error> {
+fn read(s: &str) -> Result<Option<types::MalType>, types::MalError> {
     reader::read_str(s)
 }
 
@@ -25,10 +25,11 @@ fn print(t: types::MalType) -> String {
 
 fn rep(s: &str) -> String {
     match read(s) {
-        Ok(Some(t))                          => print(eval(t)),
-        Ok(None)                             => "EOF".to_string(),
-        Err(reader::Error::UnbalancedString) => "unbalanced string".to_string(),
-        Err(reader::Error::UnbalancedList)   => "unbalanced list".to_string(),
+        Ok(Some(t))                            => print(eval(t)),
+        Ok(None)                               => "EOF".to_string(),
+        Err(types::MalError::UnbalancedString) => "unbalanced string".to_string(),
+        Err(types::MalError::UnbalancedList)   => "unbalanced list".to_string(),
+        _                                      => unimplemented!(),
     }
 }
 

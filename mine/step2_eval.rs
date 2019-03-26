@@ -12,7 +12,7 @@ mod printer;
 mod reader;
 mod types;
 
-fn read(s: &str) -> Result<Option<types::MalType>, reader::Error> {
+fn read(s: &str) -> Result<Option<types::MalType>, types::MalError> {
     reader::read_str(s)
 }
 
@@ -99,10 +99,11 @@ fn rep(s: &str) -> String {
     repl_env.insert("/".to_string(), arithmetic_operation!(/));
 
     match read(s) {
-        Ok(Some(t))                          => eval(t, &repl_env).map(print).unwrap_or("evaluation error".to_string()),
-        Ok(None)                             => "EOF".to_string(),
-        Err(reader::Error::UnbalancedString) => "unbalanced string".to_string(),
-        Err(reader::Error::UnbalancedList)   => "unbalanced list".to_string(),
+        Ok(Some(t))                            => eval(t, &repl_env).map(print).unwrap_or("evaluation error".to_string()),
+        Ok(None)                               => "EOF".to_string(),
+        Err(types::MalError::UnbalancedString) => "unbalanced string".to_string(),
+        Err(types::MalError::UnbalancedList)   => "unbalanced list".to_string(),
+        _                                      => unimplemented!(),
     }
 }
 
