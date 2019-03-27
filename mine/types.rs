@@ -15,6 +15,27 @@ pub(crate) enum MalType {
     Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
 }
 
+#[allow(unused)]
+pub(crate) enum MalError {
+    TypeCheckFailed {
+        // expected: Vec<String>,
+        // reached: String,
+    },
+    ArityError {
+        // symbol: String,
+        expected: usize,
+        reached: usize,
+    },
+    NotEvaluable(MalType),
+    CanOnlyDefineSymbols(MalType),
+    CannotBindArguments(MalType),
+    SymbolNotFound(String),
+    UnbalancedString,
+    UnbalancedList,
+}
+
+pub(crate) type MalResult = Result<MalType, MalError>;
+
 impl fmt::Debug for MalType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use MalType::*;
@@ -51,25 +72,4 @@ impl PartialEq for MalType {
             _                      => false,
         }
     }
-}
-
-pub(crate) type MalResult = Result<MalType, MalError>;
-
-#[allow(unused)]
-pub(crate) enum MalError {
-    TypeCheckFailed {
-        // expected: Vec<String>,
-        // reached: String,
-    },
-    ArityError {
-        // symbol: String,
-        expected: usize,
-        reached: usize,
-    },
-    NotEvaluable(MalType),
-    CanOnlyDefineSymbols(MalType),
-    CannotBindArguments(MalType),
-    SymbolNotFound(String),
-    UnbalancedString,
-    UnbalancedList,
 }
