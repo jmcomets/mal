@@ -233,6 +233,9 @@ fn print_error(ast_error: &ASTError) -> String {
         ArityError { expected, reached } => format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
         UnbalancedString                 => "unbalanced string".to_string(),
         UnbalancedList                   => "unbalanced list".to_string(),
+        NotHashable(ast)                 => format!("{} is not hashable", print(&ast)),
+        OddMapEntries                    => "odd number of entries in map".to_string(),
+        DuplicateKey(ast)                => format!("duplicate key {}", print(&ast)),
         IOError(e)                       => format!("I/O error: {:?}", e),
     }
 }

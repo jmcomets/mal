@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::str::{self, FromStr};
 
 use regex::Regex;
 
-use crate::types::{MalType, MalError, MalNumber};
+use crate::types::{MalType, MalError, MalHashable, MalNumber};
 
 struct Reader(Vec<Token>);
 
@@ -157,8 +158,31 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
     reader.next()
         .map(|token| {
             match token {
-                Token::Special('(') => read_list(reader, ')', |x| Ok(MalType::List(x))),
-                Token::Special('[') => read_list(reader, ']', |x| Ok(MalType::Vector(x))),
+                Token::Special('(') => read_list(reader, ')', |elements| Ok(MalType::List(elements))),
+                Token::Special('[') => read_list(reader, ']', |elements| Ok(MalType::Vector(elements))),
+                Token::Special('{') => read_list(reader, '}', |elements| {
+                    if elements.len() % 2 != 0 {
+                        return Err(MalError::OddMapEntries);
+                    }
+
+                    let mut map = HashMap::with_capacity(elements.len() / 2);
+
+                    let mut it = elements.into_iter();
+                    while let Some(key) = it.next() {
+                        let key = MalHashable::try_from(key)
+                            .map_err(MalError::NotHashable)?;
+
+                        // this cannot fail because the length is even
+                        let value = it.next().unwrap();
+
+                        let previous = map.insert(key.clone(), value);
+                        if previous.is_some() {
+                            return Err(MalError::DuplicateKey(key.into()));
+                        }
+                    }
+
+                    Ok(MalType::Dict(map))
+                }),
                 _                   => Ok(read_atom(token))
             }
         })
@@ -203,25 +227,15 @@ fn read_atom(token: Token) -> MalType {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn test_read_str() {
-    //     assert_eq!(read_str("123"), Some(Ok(MalType::Int(123))));
-    //     assert_eq!(read_str("(123 456)"), Some(Ok(MalType::List(vec![
-    //                                                      Box::new(MalType::Int(123)),
-    //                                                      Box::new(MalType::Int(456)),
-    //     ]))));
-    // }
-
-
     #[test]
     fn test_special_char_parsing() {
         for c in SPECIAL_CHARS.chars() {
-            assert_eq!(Token::from_str(&c.to_string()), Ok(Token::Special(c)));
+            assert_eq!(Token::from_str(&c.to_string()).unwrap(), Token::Special(c));
         }
 
-        assert_eq!(Token::from_str(SPECIAL_TWO_CHARS), Ok(Token::SpecialTwoCharacters));
+        assert_eq!(Token::from_str(SPECIAL_TWO_CHARS).unwrap(), Token::SpecialTwoCharacters);
 
-        assert_eq!(Token::from_str("true"), Ok(Token::Literal(Literal::Bool(true))));
+        assert_eq!(Token::from_str("true").unwrap(), Token::Literal(Literal::Bool(true)));
     }
 
     #[test]

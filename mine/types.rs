@@ -1,23 +1,25 @@
-use std::fmt;
-use std::io;
-use std::ops;
-use std::rc::Rc;
 use std::cmp;
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::io;
+use std::ops::{Add, Sub, Mul, Div};
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) enum MalType {
-    List(Vec<MalType>),
-    Vector(Vec<MalType>),
-    Symbol(String),
-    Number(MalNumber),
     Bool(bool),
-    Str(String),
+    Dict(HashMap<MalHashable, MalType>),
+    List(Vec<MalType>),
     Nil,
-    #[allow(dead_code)]
+    Number(MalNumber),
+    Str(String),
+    Symbol(String),
+    Vector(Vec<MalType>),
     Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
 }
 
-#[allow(unused)]
+#[derive(Debug)]
 pub(crate) enum MalError {
     TypeCheckFailed {
         // expected: Vec<String>,
@@ -34,6 +36,9 @@ pub(crate) enum MalError {
     SymbolNotFound(String),
     UnbalancedString,
     UnbalancedList,
+    OddMapEntries,
+    NotHashable(MalType),
+    DuplicateKey(MalType),
     IOError(io::Error),
 }
 
@@ -45,6 +50,7 @@ impl fmt::Debug for MalType {
         match self {
             List(x)     => write!(fmt, "List {{ {:?} }}", x),
             Vector(x)   => write!(fmt, "Vector {{ {:?} }}", x),
+            Dict(x)     => write!(fmt, "Dict {{ {:?} }}", x),
             Symbol(x)   => write!(fmt, "Symbol {{ {:?} }}", x),
             Number(x)   => write!(fmt, "{:?}", x),
             Bool(x)     => write!(fmt, "Bool {{ {:?} }}", x),
@@ -103,7 +109,7 @@ impl PartialEq for MalNumber {
 
 macro_rules! impl_number_op {
     ($trait:tt, $method:tt) => {
-        impl ops::$trait for MalNumber {
+        impl $trait for MalNumber {
             type Output = Self;
 
             fn $method(self, other: Self) -> Self::Output {
@@ -131,5 +137,89 @@ impl ToString for MalNumber {
             Int(i)   => i.to_string(),
             Float(f) => f.to_string(),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MalHashable {
+    Bool(bool),
+    Int(i64),
+    List(Vec<MalHashable>),
+    Nil,
+    Str(String),
+    Symbol(String),
+}
+
+impl MalHashable {
+    pub fn try_from(value: MalType) -> Result<MalHashable, MalType> {
+        use MalHashable::*;
+        match value {
+            MalType::List(elements)            => {
+                Self::try_from_list(elements.clone())
+                    .map(List)
+                    .ok_or(MalType::List(elements))
+            }
+            MalType::Symbol(x)                 => Ok(Symbol(x)),
+            MalType::Number(MalNumber::Int(x)) => Ok(Int(x)),
+            MalType::Bool(x)                   => Ok(Bool(x)),
+            MalType::Nil                       => Ok(Nil),
+            MalType::Str(x)                    => Ok(Str(x)),
+            value @ _                          => Err(value),
+        }
+    }
+
+    fn try_from_list(elements: Vec<MalType>) -> Option<Vec<MalHashable>> {
+        elements.into_iter()
+            .map(Self::try_from)
+            .map(Result::ok)
+            .collect()
+    }
+}
+
+impl Into<MalType> for MalHashable {
+    fn into(self) -> MalType {
+        use MalHashable::*;
+        match self {
+            List(x)   => MalType::List(x.into_iter().map(Self::into).collect()),
+            Symbol(x) => MalType::Symbol(x),
+            Int(x)    => MalType::Number(MalNumber::Int(x)),
+            Bool(x)   => MalType::Bool(x),
+            Nil       => MalType::Nil,
+            Str(x)    => MalType::Str(x),
+        }
+    }
+}
+
+impl Eq for MalHashable {
+}
+
+impl Hash for MalHashable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        use MalHashable::*;
+        match self {
+            List(x)   => Hash::hash(&(1,  x), state),
+            Symbol(x) => Hash::hash(&(3,  x), state),
+            Int(x)    => Hash::hash(&(5,  x), state),
+            Bool(x)   => Hash::hash(&(7,  x), state),
+            Nil       => Hash::hash(&(9, ()), state),
+            Str(x)    => Hash::hash(&(13, x), state),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+
+    fn hash<T: Hash>(t: &T) -> u64 {
+        let mut s = DefaultHasher::new();
+        t.hash(&mut s);
+        s.finish()
+    }
+
+    #[test]
+    fn it_works() {
+        assert!(true);
     }
 }
