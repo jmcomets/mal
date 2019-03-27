@@ -265,12 +265,9 @@ fn main() -> io::Result<()> {
     // add `eval` method to repl environment
     let mut env = EnvRef::new(env);
     let captured_env = env.clone();
-    env.set("eval".to_string(), make_function!(
-            move |args: &[MalType]| -> MalResult {
-                expect_arity!(args, 1);
-                eval(args[0].clone(), captured_env.clone())
-            }
-    ));
+    env.set("eval".to_string(), function!(ast {
+        eval(ast.clone(), captured_env.clone())
+    }));
 
     loop {
         match rl.readline("user> ") {

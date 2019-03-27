@@ -86,7 +86,7 @@ macro_rules! bind_args {
 macro_rules! function {
     ($($arg:tt),* $body:block) => {
         make_function!({
-            |args: &[MalType]| -> MalResult {
+            move |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg),*);
                 $body
             }
@@ -95,7 +95,7 @@ macro_rules! function {
 
     ($($arg:tt : $argtype:tt),* $body:block) => {
         make_function!({
-            |args: &[MalType]| -> MalResult {
+            move |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg : $argtype),*);
                 $body
             }
@@ -104,7 +104,7 @@ macro_rules! function {
 
     ($($arg:tt),* -> $rettype:tt $body:block) => {
         make_function!({
-            |args: &[MalType]| -> MalResult {
+            move |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg),*);
                 $body.map($rettype)
             }
@@ -113,7 +113,7 @@ macro_rules! function {
 
     ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
         make_function!({
-            |args: &[MalType]| -> MalResult {
+            move |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg : $argtype),*);
                 $body.map($rettype)
             }
@@ -125,7 +125,7 @@ macro_rules! function {
 macro_rules! variadic_function {
     ($args:tt $body:block) => {
         make_function!({
-            |$args: &[MalType]| -> MalResult {
+            move |$args: &[MalType]| -> MalResult {
                 $body
             }
         })
