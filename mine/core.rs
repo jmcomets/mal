@@ -17,8 +17,8 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     symbols.insert("<=".to_string(), number_predicate!(<=));
     symbols.insert(">=".to_string(), number_predicate!(>=));
 
-    symbols.insert("inc".to_string(), function!(x: Int -> Int { x + 1 }));
-    symbols.insert("dec".to_string(), function!(x: Int -> Int { x - 1 }));
+    symbols.insert("inc".to_string(), function!(x: Int -> Int { Ok(x + 1) }));
+    symbols.insert("dec".to_string(), function!(x: Int -> Int { Ok(x - 1) }));
 
     symbols.insert("not".to_string(), function!(x -> Bool {
         Ok({
@@ -52,11 +52,9 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }
     }));
 
-    symbols.insert("list".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                Ok(List(args.to_owned()))
-            }
-    ));
+    symbols.insert("list".to_string(), variadic_function!(args {
+        Ok(List(args.to_owned()))
+    }));
 
     symbols.insert("count".to_string(), function!(ls -> Int {
         match ls {
@@ -66,70 +64,54 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }
     }));
 
-    symbols.insert("pr-str".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                Ok(Str({
-                    let mut s = String::new();
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            s += " ";
-                        }
-                        s += &pr_str(arg, true);
-                    }
-                    s
-                }))
-            }
-    ));
-
-    symbols.insert("str".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                Ok(Str({
-                    let mut s = String::new();
-                    for arg in args.iter() {
-                        s += &pr_str(arg, false);
-                    }
-                    s
-                }))
-            }
-    ));
-
-    symbols.insert("prn".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        print!(" ");
-                    }
-                    print!("{}", pr_str(arg, true));
+    symbols.insert("pr-str".to_string(), variadic_function!(args {
+        Ok(Str({
+            let mut s = String::new();
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    s += " ";
                 }
-                println!();
-                Ok(Nil)
+                s += &pr_str(arg, true);
             }
-    ));
+            s
+        }))
+    }));
 
-    symbols.insert("println".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        print!(" ");
-                    }
-                    print!("{}", pr_str(arg, false));
-                }
-                println!();
-                Ok(Nil)
+    symbols.insert("str".to_string(), variadic_function!(args {
+        Ok(Str({
+            let mut s = String::new();
+            for arg in args.iter() {
+                s += &pr_str(arg, false);
             }
-    ));
+            s
+        }))
+    }));
 
-    symbols.insert("read-string".to_string(), make_function!(
-            |args: &[MalType]| -> MalResult {
-                expect_arity!(args, 1);
-
-                if let Str(s) = &args[0] {
-                    read_str(&s).transpose().unwrap_or(Ok(Nil))
-                } else {
-                    return Err(TypeCheckFailed{});
-                }
+    symbols.insert("prn".to_string(), variadic_function!(args {
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                print!(" ");
             }
-    ));
+            print!("{}", pr_str(arg, true));
+        }
+        println!();
+        Ok(Nil)
+    }));
+
+    symbols.insert("println".to_string(), variadic_function!(args {
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                print!(" ");
+            }
+            print!("{}", pr_str(arg, false));
+        }
+        println!();
+        Ok(Nil)
+    }));
+
+    symbols.insert("read-string".to_string(), function!(s: Str {
+        read_str(&s).transpose().unwrap_or(Ok(Nil))
+    }));
 
     symbols
 }

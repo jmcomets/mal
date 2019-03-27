@@ -68,7 +68,7 @@ macro_rules! bind_args {
         let mut arg_index = 0;
         $(
             let $arg = {
-                if let $argtype($arg) = $args[arg_index] {
+                if let $argtype($arg) = &$args[arg_index] {
                     $arg
                 } else {
                     return Err(TypeCheckFailed{});
@@ -84,12 +84,20 @@ macro_rules! bind_args {
 
 #[allow(unused_macros)]
 macro_rules! function {
-    ($($arg:tt),* -> Nil $body:block) => {
+    ($($arg:tt),* $body:block) => {
         make_function!({
             |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg),*);
-                $body;
-                Ok(Nil)
+                $body
+            }
+        })
+    };
+
+    ($($arg:tt : $argtype:tt),* $body:block) => {
+        make_function!({
+            |args: &[MalType]| -> MalResult {
+                bind_args!(args, $($arg : $argtype),*);
+                $body
             }
         })
     };
@@ -107,10 +115,21 @@ macro_rules! function {
         make_function!({
             |args: &[MalType]| -> MalResult {
                 bind_args!(args, $($arg : $argtype),*);
-                Ok($rettype($body))
+                $body.map($rettype)
             }
         })
     }
+}
+
+#[allow(unused_macros)]
+macro_rules! variadic_function {
+    ($args:tt $body:block) => {
+        make_function!({
+            |$args: &[MalType]| -> MalResult {
+                $body
+            }
+        })
+    };
 }
 
 #[allow(unused_macros)]
@@ -140,7 +159,7 @@ macro_rules! function_chain {
 #[allow(unused_macros)]
 macro_rules! binary_operator {
     ($left:tt $op:tt $right:tt -> $out:tt) => {
-        function!(a: $left, b: $right -> $out { a $op b })
+        function!(a: $left, b: $right -> $out { Ok((*a) $op (*b)) })
     }
 }
 
@@ -148,10 +167,10 @@ macro_rules! binary_operator {
 macro_rules! number_operator {
     ($op:tt) => {
         function_chain!(
-            function!(a: Int, b: Int -> Int { a $op b }),
-            function!(a: Float, b: Float -> Float { a $op b }),
-            function!(a: Int, b: Float -> Float { a as f64 $op b }),
-            function!(a: Float, b: Int -> Float { a $op b as f64  })
+            function!(a: Int,   b: Int   -> Int   { Ok((*a) $op (*b)) }),
+            function!(a: Float, b: Float -> Float { Ok((*a) $op (*b)) }),
+            function!(a: Int,   b: Float -> Float { Ok((*a as f64) $op (*b)) }),
+            function!(a: Float, b: Int   -> Float { Ok((*a) $op (*b as f64))  })
         )
     }
 }
@@ -160,10 +179,10 @@ macro_rules! number_operator {
 macro_rules! number_predicate {
     ($op:tt) => {
         function_chain!(
-            function!(a: Int, b: Int -> Bool { a $op b }),
-            function!(a: Float, b: Float -> Bool { a $op b }),
-            function!(a: Int, b: Float -> Bool { (a as f64) $op b }),
-            function!(a: Float, b: Int -> Bool { a $op (b as f64)  })
+            function!(a: Int,   b: Int   -> Bool { Ok((*a) $op (*b)) }),
+            function!(a: Float, b: Float -> Bool { Ok((*a) $op (*b)) }),
+            function!(a: Int,   b: Float -> Bool { Ok((*a as f64) $op (*b)) }),
+            function!(a: Float, b: Int   -> Bool { Ok((*a) $op (*b as f64))  })
         )
     }
 }
