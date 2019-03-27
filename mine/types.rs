@@ -1,4 +1,5 @@
 use std::fmt;
+use std::io;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -32,6 +33,7 @@ pub(crate) enum MalError {
     SymbolNotFound(String),
     UnbalancedString,
     UnbalancedList,
+    IOError(io::Error),
 }
 
 pub(crate) type MalResult = Result<MalType, MalError>;

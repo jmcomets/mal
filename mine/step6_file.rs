@@ -223,31 +223,32 @@ fn print(ast: &AST) -> String {
     printer::pr_str(&ast, true)
 }
 
+fn print_error(ast_error: &ASTError) -> String {
+    match ast_error {
+        CanOnlyDefineSymbols(ast)        => format!("can only define symbols (not '{}')", print(&ast)),
+        CannotBindArguments(ast)         => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
+        NotEvaluable(ast)                => format!("cannot evaluate '{}'", print(&ast)),
+        SymbolNotFound(symbol)           => format!("symbol '{}' not found", symbol),
+        TypeCheckFailed {}               => format!("typecheck failed"),
+        ArityError { expected, reached } => format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
+        UnbalancedString                 => "unbalanced string".to_string(),
+        UnbalancedList                   => "unbalanced list".to_string(),
+        IOError(e)                       => format!("I/O error: {:?}", e),
+    }
+}
+
 fn eval_print(ast: AST, env: EnvRef) -> String {
     match eval(ast, env) {
         Ok(ast) => print(&ast),
-        Err(e)  => {
-            match e {
-                CanOnlyDefineSymbols(ast)        => format!("can only define symbols (not '{}')", print(&ast)),
-                CannotBindArguments(ast)         => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
-                NotEvaluable(ast)                => format!("cannot evaluate '{}'", print(&ast)),
-                SymbolNotFound(symbol)           => format!("symbol '{}' not found", symbol),
-                TypeCheckFailed {}               => format!("typecheck failed"),
-                ArityError { expected, reached } =>
-                    format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
-                _                                => unimplemented!(),
-            }
-        }
+        Err(e)  => print_error(&e),
     }
 }
 
 fn rep(s: &str, env: EnvRef) -> String {
     match read(s) {
-        Ok(Some(ast))         => eval_print(ast, env),
-        Ok(None)              => "EOF".to_string(),
-        Err(UnbalancedString) => "unbalanced string".to_string(),
-        Err(UnbalancedList)   => "unbalanced list".to_string(),
-        _                     => unimplemented!(),
+        Ok(Some(ast)) => eval_print(ast, env),
+        Ok(None)      => "EOF".to_string(),
+        Err(e)        => print_error(&e),
     }
 }
 

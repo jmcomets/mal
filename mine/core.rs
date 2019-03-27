@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::{Read, BufReader};
 use std::collections::HashMap;
 
 use crate::types::MalType;
@@ -111,6 +113,16 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
 
     symbols.insert("read-string".to_string(), function!(s: Str {
         read_str(&s).transpose().unwrap_or(Ok(Nil))
+    }));
+
+    symbols.insert("slurp".to_string(), function!(filename: Str {
+        let file = File::open(&filename).map_err(IOError)?;
+
+        let mut contents = String::new();
+        let mut buffered_reader = BufReader::new(file);
+        buffered_reader.read_to_string(&mut contents).map_err(IOError)?;
+
+        read_str(&contents).transpose().unwrap_or(Ok(Nil))
     }));
 
     symbols
