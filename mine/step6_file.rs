@@ -270,6 +270,8 @@ fn main() -> io::Result<()> {
         eval(ast.clone(), captured_env.clone())
     }));
 
+    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.clone());
+
     loop {
         match rl.readline("user> ") {
             Ok(line) => {
