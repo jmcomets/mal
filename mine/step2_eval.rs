@@ -68,27 +68,17 @@ fn print(t: types::MalType) -> String {
 fn rep(s: &str) -> String {
     let mut repl_env = HashMap::new();
 
-    macro_rules! match_binary_operation {
-        ($($left:tt $op:tt $right:tt => $out:tt),*) => {
-            |a: &types::MalType, b: &types::MalType| {
-                use types::MalType::*;
-                match (a, b) {
-                    $(($left(left), $right(right)) => Some($out(left $op right)),)*
-                        _                          => None,
-                }
-            }
-        }
-    }
-
     macro_rules! arithmetic_operation {
         ($op:tt) => {
             Callable::new2(|a, b| {
-                let matchers = match_binary_operation! {
-                    Int $op Int => Int,
-                    Float $op Float => Float
+                use types::MalType::*;
+                let ret = if let (Number(a), Number(b)) = (a, b) {
+                    Some(Number((*a) $op (*b)))
+                } else {
+                    None
                 };
 
-                matchers(a, b).unwrap()
+                ret.unwrap()
             })
         }
     }

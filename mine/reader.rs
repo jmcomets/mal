@@ -2,7 +2,7 @@ use std::str::{self, FromStr};
 
 use regex::Regex;
 
-use crate::types::{MalType, MalError};
+use crate::types::{MalType, MalError, MalNumber};
 
 struct Reader(Vec<Token>);
 
@@ -190,8 +190,8 @@ fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -
 fn read_atom(token: Token) -> MalType {
     match token {
         Token::Symbol(s)                  => MalType::Symbol(s),
-        Token::Literal(Literal::Int(i))   => MalType::Int(i),
-        Token::Literal(Literal::Float(f)) => MalType::Float(f),
+        Token::Literal(Literal::Int(i))   => MalType::Number(MalNumber::Int(i)),
+        Token::Literal(Literal::Float(f)) => MalType::Number(MalNumber::Float(f)),
         Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
         Token::Literal(Literal::Str(s))   => MalType::Str(s),
         Token::Literal(Literal::Nil)      => MalType::Nil,

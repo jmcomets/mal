@@ -159,10 +159,10 @@ fn rep(s: &str, env: &mut EnvRef) -> String {
 
 fn default_env() -> Env {
     let mut env = Env::new();
-    env.set("+".to_string(), binary_operator!(Int + Int -> Int));
-    env.set("-".to_string(), binary_operator!(Int - Int -> Int));
-    env.set("*".to_string(), binary_operator!(Int * Int -> Int));
-    env.set("/".to_string(), binary_operator!(Int / Int -> Int));
+    env.set("+".to_string(), binary_operator!(Number + Number -> Number));
+    env.set("-".to_string(), binary_operator!(Number - Number -> Number));
+    env.set("*".to_string(), binary_operator!(Number * Number -> Number));
+    env.set("/".to_string(), binary_operator!(Number / Number -> Number));
     env
 }
 

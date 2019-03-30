@@ -27,6 +27,7 @@ macro_rules! make_function {
             use $crate::types::{
                 MalType::{self, *},
                 MalError::*,
+                MalNumber::{self as Number, *},
                 MalResult,
             };
 
@@ -160,29 +161,5 @@ macro_rules! function_chain {
 macro_rules! binary_operator {
     ($left:tt $op:tt $right:tt -> $out:tt) => {
         function!(a: $left, b: $right -> $out { Ok((*a) $op (*b)) })
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! number_operator {
-    ($op:tt) => {
-        function_chain!(
-            function!(a: Int,   b: Int   -> Int   { Ok((*a) $op (*b)) }),
-            function!(a: Float, b: Float -> Float { Ok((*a) $op (*b)) }),
-            function!(a: Int,   b: Float -> Float { Ok((*a as f64) $op (*b)) }),
-            function!(a: Float, b: Int   -> Float { Ok((*a) $op (*b as f64))  })
-        )
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! number_predicate {
-    ($op:tt) => {
-        function_chain!(
-            function!(a: Int,   b: Int   -> Bool { Ok((*a) $op (*b)) }),
-            function!(a: Float, b: Float -> Bool { Ok((*a) $op (*b)) }),
-            function!(a: Int,   b: Float -> Bool { Ok((*a as f64) $op (*b)) }),
-            function!(a: Float, b: Int   -> Bool { Ok((*a) $op (*b as f64))  })
-        )
     }
 }

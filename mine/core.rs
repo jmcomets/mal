@@ -9,25 +9,24 @@ use crate::reader::read_str;
 pub(crate) fn ns() -> HashMap<String, MalType> {
     let mut symbols = HashMap::new();
 
-    symbols.insert("+".to_string(), number_operator!(+));
-    symbols.insert("-".to_string(), number_operator!(-));
-    symbols.insert("*".to_string(), number_operator!(*));
-    symbols.insert("/".to_string(), number_operator!(/));
+    symbols.insert("+".to_string(), binary_operator!(Number + Number -> Number));
+    symbols.insert("-".to_string(), binary_operator!(Number - Number -> Number));
+    symbols.insert("*".to_string(), binary_operator!(Number * Number -> Number));
+    symbols.insert("/".to_string(), binary_operator!(Number / Number -> Number));
 
-    symbols.insert("<".to_string(), number_predicate!(<));
-    symbols.insert(">".to_string(), number_predicate!(>));
-    symbols.insert("<=".to_string(), number_predicate!(<=));
-    symbols.insert(">=".to_string(), number_predicate!(>=));
+    symbols.insert("<".to_string(), binary_operator!(Number < Number -> Bool));
+    symbols.insert(">".to_string(), binary_operator!(Number > Number -> Bool));
+    symbols.insert("<".to_string(), binary_operator!(Number <= Number -> Bool));
+    symbols.insert(">".to_string(), binary_operator!(Number >= Number -> Bool));
 
-    symbols.insert("inc".to_string(), function!(x: Int -> Int { Ok(x + 1) }));
-    symbols.insert("dec".to_string(), function!(x: Int -> Int { Ok(x - 1) }));
+    symbols.insert("inc".to_string(), function!(x: Number -> Number { Ok(*x + Int(1)) }));
+    symbols.insert("dec".to_string(), function!(x: Number -> Number { Ok(*x - Int(1)) }));
 
     symbols.insert("not".to_string(), function!(x -> Bool {
         Ok({
             match x {
                 Bool(p)               => !p,
-                Int(n)                => !(*n == 0),
-                Float(n)              => !(*n == 0.),
+                Number(n)             => !(*n == Int(0)),
                 List(ls) | Vector(ls) => !ls.is_empty(),
                 Nil                   => true,
                 _                     => false,
@@ -58,10 +57,10 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         Ok(List(args.to_owned()))
     }));
 
-    symbols.insert("count".to_string(), function!(ls -> Int {
+    symbols.insert("count".to_string(), function!(ls -> Number {
         match ls {
-            Nil                   => Ok(0),
-            List(ls) | Vector(ls) => Ok(ls.len() as i64),
+            Nil                   => Ok(Int(0)),
+            List(ls) | Vector(ls) => Ok(Int(ls.len() as i64)),
             _                     => Err(TypeCheckFailed{}),
         }
     }));
