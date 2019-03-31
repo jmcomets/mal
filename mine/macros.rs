@@ -38,7 +38,7 @@ macro_rules! make_function {
 
 #[allow(unused_macros)]
 macro_rules! bind_args {
-    ($args:expr, $($binding:tt),*) => {
+    ($args:expr, $($binding:tt $( : $binding_type:tt )? ),*) => {
         let nb_args = 0 $(+ {stringify!($binding); 1})*;
         if $args.len() != nb_args {
             return Err(ArityError {
@@ -51,71 +51,38 @@ macro_rules! bind_args {
         $(
             let $binding = &$args[arg_index];
 
+            $(
+                let $binding = {
+                    if let $binding_type($binding) = $binding {
+                        $binding
+                    } else {
+                        return Err(TypeCheckFailed{});
+                    }
+                };
+            )?
+
             #[allow(unused)] {
                 arg_index += 1;
             }
         )*
     };
-
-    ($args:expr, $($arg:tt : $argtype:tt),*) => {
-        let nb_args = 0 $(+ {stringify!($arg); 1})*;
-        if $args.len() != nb_args {
-            return Err(ArityError {
-                expected: nb_args,
-                reached: $args.len(),
-            });
-        }
-
-        let mut arg_index = 0;
-        $(
-            let $arg = {
-                if let $argtype($arg) = &$args[arg_index] {
-                    $arg
-                } else {
-                    return Err(TypeCheckFailed{});
-                }
-            };
-
-            #[allow(unused)] {
-                arg_index += 1;
-            }
-        )*
-    }
 }
 
 #[allow(unused_macros)]
 macro_rules! function {
-    ($($arg:tt),* $body:block) => {
+    ($($arg:tt $( : $arg_type:tt )? ),* $body:block) => {
         make_function!({
             move |args: &[MalType]| -> MalResult {
-                bind_args!(args, $($arg),*);
+                bind_args!(args, $($arg $( : $arg_type )? ),*);
                 $body
             }
         })
     };
 
-    ($($arg:tt : $argtype:tt),* $body:block) => {
+    ($($arg:tt $( : $arg_type:tt )? ),* -> $rettype:tt $body:block) => {
         make_function!({
             move |args: &[MalType]| -> MalResult {
-                bind_args!(args, $($arg : $argtype),*);
-                $body
-            }
-        })
-    };
-
-    ($($arg:tt),* -> $rettype:tt $body:block) => {
-        make_function!({
-            move |args: &[MalType]| -> MalResult {
-                bind_args!(args, $($arg),*);
-                $body.map($rettype)
-            }
-        })
-    };
-
-    ($($arg:tt : $argtype:tt),* -> $rettype:tt $body:block) => {
-        make_function!({
-            move |args: &[MalType]| -> MalResult {
-                bind_args!(args, $($arg : $argtype),*);
+                bind_args!(args, $($arg $( : $arg_type )? ),*);
                 $body.map($rettype)
             }
         })

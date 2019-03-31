@@ -183,6 +183,14 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
 
                     Ok(MalType::Dict(map))
                 }),
+                Token::Special('@') => {
+                    if let Some(value) = read_form(reader)? {
+                        let deref_symbol = MalType::Symbol("deref".to_string());
+                        Ok(MalType::List(vec![deref_symbol, value]))
+                    } else {
+                        Err(MalError::LoneDeref)
+                    }
+                }
                 _                   => Ok(read_atom(token))
             }
         })

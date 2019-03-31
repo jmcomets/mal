@@ -124,5 +124,25 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         read_str(&contents).transpose().unwrap_or(Ok(Nil))
     }));
 
+    symbols.insert("atom".to_string(), function!(x {
+        Ok(MalType::atom(x.clone()))
+    }));
+
+    symbols.insert("atom?".to_string(), function!(x -> Bool {
+        Ok(if let Atom(_) = x { true } else { false })
+    }));
+
+    symbols.insert("deref".to_string(), function!(x: Atom {
+        Ok(x.borrow().clone())
+    }));
+
+    symbols.insert("reset!".to_string(), function!(x: Atom, value {
+        Ok(x.replace(value.clone()))
+    }));
+
+    //symbols.insert("swap!".to_string(), function!(x: Atom, f: Function {
+    //    Ok(x.replace_with(f)) // TODO have `f` take extra arguments
+    //}));
+
     symbols
 }

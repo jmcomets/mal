@@ -236,6 +236,7 @@ fn print_error(ast_error: &ASTError) -> String {
         NotHashable(ast)                 => format!("{} is not hashable", print(&ast)),
         OddMapEntries                    => "odd number of entries in map".to_string(),
         DuplicateKey(ast)                => format!("duplicate key {}", print(&ast)),
+        LoneDeref                        => "'@' must be followed by a value".to_string(),
         IOError(e)                       => format!("I/O error: {:?}", e),
     }
 }

@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO remove this
+
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt;
@@ -5,9 +7,11 @@ use std::hash::{Hash, Hasher};
 use std::io;
 use std::ops::{Add, Sub, Mul, Div};
 use std::rc::Rc;
+use std::cell::RefCell;
 
 #[derive(Clone)]
 pub(crate) enum MalType {
+    Atom(Rc<RefCell<MalType>>),
     Bool(bool),
     Dict(HashMap<MalHashable, MalType>),
     List(Vec<MalType>),
@@ -17,6 +21,12 @@ pub(crate) enum MalType {
     Symbol(String),
     Vector(Vec<MalType>),
     Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
+}
+
+impl MalType {
+    pub fn atom(inner: Self) -> Self {
+        MalType::Atom(Rc::new(RefCell::new(inner)))
+    }
 }
 
 #[derive(Debug)]
@@ -39,6 +49,7 @@ pub(crate) enum MalError {
     OddMapEntries,
     NotHashable(MalType),
     DuplicateKey(MalType),
+    LoneDeref,
     IOError(io::Error),
 }
 
@@ -48,6 +59,7 @@ impl fmt::Debug for MalType {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use MalType::*;
         match self {
+            Atom(x)     => write!(fmt, "Atom {{ {:?} }}", x),
             List(x)     => write!(fmt, "List {{ {:?} }}", x),
             Vector(x)   => write!(fmt, "Vector {{ {:?} }}", x),
             Dict(x)     => write!(fmt, "Dict {{ {:?} }}", x),
