@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use im::HashMap as ImHashMap;
 use std::str::{self, FromStr};
 
 use regex::Regex;
@@ -158,14 +158,14 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
     reader.next()
         .map(|token| {
             match token {
-                Token::Special('(') => read_list(reader, ')', |elements| Ok(MalType::List(elements))),
+                Token::Special('(') => read_list(reader, ')', |elements| Ok(MalType::List(elements.into_iter().collect()))),
                 Token::Special('[') => read_list(reader, ']', |elements| Ok(MalType::Vector(elements))),
                 Token::Special('{') => read_list(reader, '}', |elements| {
                     if elements.len() % 2 != 0 {
                         return Err(MalError::OddMapEntries);
                     }
 
-                    let mut map = HashMap::with_capacity(elements.len() / 2);
+                    let mut map = ImHashMap::new();
 
                     let mut it = elements.into_iter();
                     while let Some(key) = it.next() {
@@ -186,7 +186,7 @@ fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
                 Token::Special('@') => {
                     if let Some(value) = read_form(reader)? {
                         let deref_symbol = MalType::Symbol("deref".to_string());
-                        Ok(MalType::List(vec![deref_symbol, value]))
+                        Ok(make_list!(deref_symbol, value))
                     } else {
                         Err(MalError::LoneDeref)
                     }

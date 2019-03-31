@@ -1,5 +1,8 @@
 #![allow(unused)] // TODO remove this
 
+use im::Vector as ImVec;
+use im::HashMap as ImHashMap;
+
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt;
@@ -13,15 +16,17 @@ use std::cell::RefCell;
 pub(crate) enum MalType {
     Atom(Rc<RefCell<MalType>>),
     Bool(bool),
-    Dict(HashMap<MalHashable, MalType>),
-    List(Vec<MalType>),
+    Dict(ImHashMap<MalHashable, MalType>),
+    List(ImVec<MalType>),
     Nil,
     Number(MalNumber),
     Str(String),
     Symbol(String),
     Vector(Vec<MalType>),
-    Function(Rc<dyn Fn(&[MalType]) -> MalResult>),
+    Function(Rc<dyn Fn(MalArgs) -> MalResult>),
 }
+
+pub(crate) type MalArgs = ImVec<MalType>;
 
 impl MalType {
     pub fn atom(inner: Self) -> Self {
@@ -180,7 +185,9 @@ impl MalHashable {
         }
     }
 
-    fn try_from_list(elements: Vec<MalType>) -> Option<Vec<MalHashable>> {
+    fn try_from_list<It>(elements: It) -> Option<Vec<MalHashable>>
+        where It: IntoIterator<Item=MalType>,
+    {
         elements.into_iter()
             .map(Self::try_from)
             .map(Result::ok)

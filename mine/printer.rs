@@ -32,7 +32,7 @@ fn pr_list<'a, It>(elements: It, opening: &str, closing: &str, readably: bool) -
 }
 
 fn pr_dict<'a, It>(elements: It, opening: &str, closing: &str, readably: bool) -> String
-    where It: IntoIterator<Item=(&'a MalHashable, &'a MalType)>,
+    where It: IntoIterator<Item=&'a (MalHashable, MalType)>,
 {
     let mut s = String::new();
     s += opening;

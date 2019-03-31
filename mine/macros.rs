@@ -1,4 +1,32 @@
-#[allow(unused_macros)]
+macro_rules! make_list {
+    ($($item:expr),*) => {
+        #[allow(unused_mut)] {
+            let mut v = im::Vector::new();
+            $(
+                v.push_back($item);
+            )*
+            $crate::types::MalType::List(v)
+        }
+    }
+}
+
+macro_rules! make_function {
+    ($f:expr) => {
+        {
+            #[allow(unused_imports)]
+            use $crate::types::{
+                MalArgs,
+                MalError::*,
+                MalNumber::{self as Number, *},
+                MalResult,
+                MalType::{self, *},
+            };
+
+            Function(std::rc::Rc::new($f))
+        }
+    }
+}
+
 macro_rules! expect_arity {
     ($args:expr, $($expected:expr),*) => {
         #[allow(unused_assignments, unused_variables)] {
@@ -19,37 +47,14 @@ macro_rules! expect_arity {
     }
 }
 
-#[allow(unused_macros)]
-macro_rules! make_function {
-    ($f:expr) => {
-        {
-            #[allow(unused_imports)]
-            use $crate::types::{
-                MalType::{self, *},
-                MalError::*,
-                MalNumber::{self as Number, *},
-                MalResult,
-            };
-
-            Function(std::rc::Rc::new($f))
-        }
-    }
-}
-
-#[allow(unused_macros)]
 macro_rules! bind_args {
     ($args:expr, $($binding:tt $( : $binding_type:tt )? ),*) => {
         let nb_args = 0 $(+ {stringify!($binding); 1})*;
-        if $args.len() != nb_args {
-            return Err(ArityError {
-                expected: nb_args,
-                reached: $args.len(),
-            });
-        }
+        expect_arity!($args, nb_args);
 
-        let mut arg_index = 0;
+        let mut it = $args.into_iter();
         $(
-            let $binding = &$args[arg_index];
+            let $binding = it.next().unwrap();
 
             $(
                 let $binding = {
@@ -60,19 +65,14 @@ macro_rules! bind_args {
                     }
                 };
             )?
-
-            #[allow(unused)] {
-                arg_index += 1;
-            }
         )*
     };
 }
 
-#[allow(unused_macros)]
 macro_rules! function {
     ($($arg:tt $( : $arg_type:tt )? ),* $body:block) => {
         make_function!({
-            move |args: &[MalType]| -> MalResult {
+            move |args: MalArgs| -> MalResult {
                 bind_args!(args, $($arg $( : $arg_type )? ),*);
                 $body
             }
@@ -81,7 +81,7 @@ macro_rules! function {
 
     ($($arg:tt $( : $arg_type:tt )? ),* -> $rettype:tt $body:block) => {
         make_function!({
-            move |args: &[MalType]| -> MalResult {
+            move |args: MalArgs| -> MalResult {
                 bind_args!(args, $($arg $( : $arg_type )? ),*);
                 $body.map($rettype)
             }
@@ -89,44 +89,18 @@ macro_rules! function {
     }
 }
 
-#[allow(unused_macros)]
 macro_rules! variadic_function {
     ($args:tt $body:block) => {
         make_function!({
-            move |$args: &[MalType]| -> MalResult {
+            move |$args: MalArgs| -> MalResult {
                 $body
             }
         })
     };
 }
 
-#[allow(unused_macros)]
-macro_rules! function_chain {
-    ($($f:expr),*) => {
-        make_function!({
-            let functions = vec![$($f, )*];
-
-            move |args: &[MalType]| -> MalResult {
-                for f in functions.iter() {
-                    if let Function(f) = f {
-                        match f(args) {
-                            Err(TypeCheckFailed{}) => {},
-                            ret @ Ok(_) | ret @ Err(_)   => return ret,
-                        }
-                    } else {
-                        panic!("expected function, got {:?}", f);
-                    }
-                }
-
-                Err(TypeCheckFailed{})
-            }
-        })
-    }
-}
-
-#[allow(unused_macros)]
 macro_rules! binary_operator {
     ($left:tt $op:tt $right:tt -> $out:tt) => {
-        function!(a: $left, b: $right -> $out { Ok((*a) $op (*b)) })
+        function!(a: $left, b: $right -> $out { Ok(a $op b) })
     }
 }

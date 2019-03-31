@@ -19,17 +19,18 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     symbols.insert("<".to_string(), binary_operator!(Number <= Number -> Bool));
     symbols.insert(">".to_string(), binary_operator!(Number >= Number -> Bool));
 
-    symbols.insert("inc".to_string(), function!(x: Number -> Number { Ok(*x + Int(1)) }));
-    symbols.insert("dec".to_string(), function!(x: Number -> Number { Ok(*x - Int(1)) }));
+    symbols.insert("inc".to_string(), function!(x: Number -> Number { Ok(x + Int(1)) }));
+    symbols.insert("dec".to_string(), function!(x: Number -> Number { Ok(x - Int(1)) }));
 
     symbols.insert("not".to_string(), function!(x -> Bool {
         Ok({
             match x {
-                Bool(p)               => !p,
-                Number(n)             => !(*n == Int(0)),
-                List(ls) | Vector(ls) => !ls.is_empty(),
-                Nil                   => true,
-                _                     => false,
+                Bool(p)    => !p,
+                Number(n)  => !(n == Int(0)),
+                List(ls)   => !ls.is_empty(),
+                Vector(ls) => !ls.is_empty(),
+                Nil        => true,
+                _          => false,
             }
         })
     }));
@@ -47,9 +48,10 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
 
     symbols.insert("empty?".to_string(), function!(ls -> Bool {
         match ls {
-            Nil                   => Ok(true),
-            List(ls) | Vector(ls) => Ok(ls.is_empty()),
-            _                     => Err(TypeCheckFailed{}),
+            Nil        => Ok(true),
+            List(ls)   => Ok(ls.is_empty()),
+            Vector(ls) => Ok(ls.is_empty()),
+            _          => Err(TypeCheckFailed{}),
         }
     }));
 
@@ -59,9 +61,10 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
 
     symbols.insert("count".to_string(), function!(ls -> Number {
         match ls {
-            Nil                   => Ok(Int(0)),
-            List(ls) | Vector(ls) => Ok(Int(ls.len() as i64)),
-            _                     => Err(TypeCheckFailed{}),
+            Nil        => Ok(Int(0)),
+            List(ls)   => Ok(Int(ls.len() as i64)),
+            Vector(ls) => Ok(Int(ls.len() as i64)),
+            _          => Err(TypeCheckFailed{}),
         }
     }));
 
@@ -133,7 +136,10 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
     }));
 
     symbols.insert("deref".to_string(), function!(x: Atom {
-        Ok(x.borrow().clone())
+        Ok({
+            let x = x.borrow();
+            x.clone()
+        })
     }));
 
     symbols.insert("reset!".to_string(), function!(x: Atom, value {

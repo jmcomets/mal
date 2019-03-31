@@ -7,8 +7,9 @@ use std::iter::FromIterator;
 
 use rustyline::{Editor, error::ReadlineError};
 
-#[macro_use] mod macros;
+use itertools::Itertools;
 
+#[macro_use] mod macros;
 mod core;
 mod env;
 mod printer;
@@ -20,6 +21,7 @@ use env::{Env, EnvRef};
 use types::{
     MalType as AST,
     MalError as ASTError,
+    MalArgs as ASTArgs,
 };
 
 fn read(s: &str) -> Result<Option<AST>, ASTError> {
@@ -28,8 +30,8 @@ fn read(s: &str) -> Result<Option<AST>, ASTError> {
 
 use ASTError::*;
 
-fn eval_ast_list<T>(elements: T, env: &mut EnvRef) -> Result<Vec<AST>, ASTError>
-    where T: IntoIterator<Item=AST> + FromIterator<AST>
+fn eval_ast_list<T>(elements: T, env: &mut EnvRef) -> Result<T, ASTError>
+    where T: IntoIterator<Item=AST> + FromIterator<AST>,
 {
     elements.into_iter()
         .map(|x| eval(x, env.clone()))
@@ -45,47 +47,53 @@ fn eval_ast(ast: AST, env: &mut EnvRef) -> Result<AST, ASTError> {
     }
 }
 
-fn eval_apply(ast: &AST) -> Result<AST, ASTError> {
-    if let AST::List(elements) = ast {
-        match &elements[0] {
-            AST::Function(func)          => func(&elements[1..]),
-            AST::Symbol(symbol)          => Err(SymbolNotFound(symbol.to_string())),
-            ast @ _                      => Err(NotEvaluable(ast.clone())),
+fn eval_let<'a, It>(bindings: It, env: &mut EnvRef) -> Result<(), ASTError>
+    where It: IntoIterator<Item=&'a AST>,
+{
+    for (symbol, value) in bindings.into_iter().tuples() {
+        if let AST::Symbol(symbol) = symbol {
+            let value = eval(value.clone(), env.clone())?;
+            env.set(symbol.to_string(), value);
+        } else {
+            return Err(CanOnlyDefineSymbols(symbol.clone()));
         }
-    } else {
-        unreachable!()
     }
+    Ok(())
 }
 
-macro_rules! expect_arity {
-    ($args:expr, $($expected:expr),*) => {
-        #[allow(unused_assignments, unused_variables)] {
-            $(
-                let mut expected = Some($expected);
-                if $args.len() == $expected {
-                    expected = None;
-                }
-            )*
-
-            if let Some(expected) = expected {
-                return Err(ArityError {
-                    expected: expected,
-                    reached: $args.len(),
-                });
-            }
+fn eval_fn<'a, It>(bindings: It, body: AST, env: EnvRef) -> Result<AST, ASTError>
+    where It: IntoIterator<Item=&'a AST>,
+{
+    let mut symbols = vec![];
+    for value in bindings.into_iter() {
+        if let AST::Symbol(symbol) = value {
+            symbols.push(symbol.clone());
+        } else {
+            return Err(CanOnlyDefineSymbols(value.clone()));
         }
     }
+
+    Ok(make_function!(move |args: ASTArgs| -> Result<AST, ASTError> {
+        expect_arity!(args, symbols.len());
+
+        let mut call_env = EnvRef::refer_to(env.clone());
+        for (symbol, value) in symbols.iter().zip(args.iter()) {
+            call_env.set(symbol.clone(), value.clone());
+        }
+
+        eval(body.clone(), call_env)
+    }))
 }
 
 fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
     loop {
         if let AST::List(elements) = &ast {
             if elements.is_empty() {
-                return Ok(AST::List(vec![]));
+                return Ok(make_list!());
             }
 
             if let AST::Symbol(symbol) = &elements[0] {
-                let args = (&elements[1..]).to_owned();
+                let args = elements.skip(1);
 
                 match symbol.as_str() {
                     "def!" => {
@@ -111,20 +119,9 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
 
                         let mut new_env = EnvRef::refer_to(env);
                         match let_symbol {
-                            AST::List(bindings) | AST::Vector(bindings) => {
-                                for let_args in bindings.chunks(2) {
-                                    let binding_symbol = let_args[0].clone();
-                                    let binding_value = let_args[1].clone();
-
-                                    if let AST::Symbol(symbol) = &binding_symbol {
-                                        let value = eval(binding_value.clone(), new_env.clone())?;
-                                        new_env.set(symbol.to_string(), value);
-                                    } else {
-                                        return Err(CanOnlyDefineSymbols(binding_symbol.clone()));
-                                    }
-                                }
-                            }
-                            _ => return Err(CannotBindArguments(let_symbol.clone()))
+                            AST::List(bindings)   => eval_let(bindings, &mut new_env)?,
+                            AST::Vector(bindings) => eval_let(bindings, &mut new_env)?,
+                            _                     => return Err(CannotBindArguments(let_symbol.clone()))
                         }
 
                         ast = let_value;
@@ -170,34 +167,13 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
                         let fn_body = args[1].clone();
 
                         match fn_symbol.clone() {
-                            AST::List(bindings) | AST::Vector(bindings) => {
-                                let mut symbols = vec![];
-                                for value in bindings {
-                                    if let AST::Symbol(symbol) = value {
-                                        symbols.push(symbol.clone());
-                                    } else {
-                                        return Err(CanOnlyDefineSymbols(fn_symbol));
-                                    }
-                                }
+                            AST::List(ref bindings) => {
+                                ast = eval_fn(bindings, fn_body, env.clone())?;
+                                continue; // don't run the `apply` phase just yet
+                            }
 
-                                let captured_env = env.clone();
-                                let new_ast = make_function!(move |args: &[AST]| -> Result<AST, ASTError> {
-                                    if args.len() != symbols.len() {
-                                        return Err(ArityError {
-                                            expected: symbols.len(),
-                                            reached: args.len(),
-                                        });
-                                    }
-
-                                    let mut call_env = EnvRef::refer_to(captured_env.clone());
-                                    for (symbol, value) in symbols.iter().zip(args.iter()) {
-                                        call_env.set(symbol.clone(), value.clone());
-                                    }
-
-                                    eval(fn_body.clone(), call_env)
-                                });
-
-                                ast = new_ast;
+                            AST::Vector(ref bindings) => {
+                                ast = eval_fn(bindings, fn_body, env.clone())?;
                                 continue; // don't run the `apply` phase just yet
                             }
 
@@ -212,7 +188,17 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
             }
 
             // `apply` phase
-            return eval_apply(&eval_ast(ast, &mut env)?);
+            if let AST::List(elements) = eval_ast(ast, &mut env)? {
+                return {
+                    match &elements[0] {
+                        AST::Function(func) => func(elements.skip(1)),
+                        AST::Symbol(symbol) => Err(SymbolNotFound(symbol.to_string())),
+                        ast @ _             => Err(NotEvaluable(ast.clone())),
+                    }
+                };
+            } else {
+                unreachable!();
+            }
         } else {
             return eval_ast(ast, &mut env);
         }
