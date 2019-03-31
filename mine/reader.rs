@@ -43,15 +43,15 @@ impl FromStr for Reader {
 
 #[derive(Debug, PartialEq)]
 enum Token {
-    Special(char),        // []{}()'`~^@
-    SpecialTwoCharacters, // @~
-    Comment,              // The ";" token
-    Literal(Literal),     // integers, floats, booleans, strings, nil, ...
-    Symbol(String),       // identifiers
+    Special(char),   // []{}()'`~^@
+    SpliceUnquote,   // ~@
+    Comment,         // The ";" token
+    Literal(Literal),// integers, floats, booleans, strings, nil, ...
+    Symbol(String),  // identifiers
 }
 
 const SPECIAL_CHARS: &str = "[]{}()'`~^@";
-const SPECIAL_TWO_CHARS: &str = "@~";
+const SPLICE_UNQUOTE: &str = "~@";
 const COMMENT_CHAR: char = ';';
 
 impl FromStr for Token {
@@ -66,8 +66,8 @@ impl FromStr for Token {
             } else if c == COMMENT_CHAR {
                 return Ok(Token::Comment);
             }
-        } else if s == SPECIAL_TWO_CHARS {
-            return Ok(Token::SpecialTwoCharacters);
+        } else if s == SPLICE_UNQUOTE {
+            return Ok(Token::SpliceUnquote);
         }
 
         // literals
@@ -241,7 +241,7 @@ mod tests {
             assert_eq!(Token::from_str(&c.to_string()).unwrap(), Token::Special(c));
         }
 
-        assert_eq!(Token::from_str(SPECIAL_TWO_CHARS).unwrap(), Token::SpecialTwoCharacters);
+        assert_eq!(Token::from_str(SPLICE_UNQUOTE).unwrap(), Token::SpliceUnquote);
 
         assert_eq!(Token::from_str("true").unwrap(), Token::Literal(Literal::Bool(true)));
     }
