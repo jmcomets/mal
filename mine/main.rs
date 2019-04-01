@@ -16,7 +16,7 @@ mod printer;
 mod reader;
 mod types;
 
-use env::{Env, EnvRef};
+use env::EnvRef;
 
 use types::{
     MalType as AST,
@@ -34,7 +34,7 @@ fn eval_ast_list<T>(elements: T, env: &EnvRef) -> Result<T, ASTError>
     where T: IntoIterator<Item=AST> + FromIterator<AST>,
 {
     elements.into_iter()
-        .map(|x| eval(x, env.clone()))
+        .map(|x| eval(x, env.pass()))
         .collect()
 }
 
@@ -49,7 +49,7 @@ fn eval_ast(ast: AST, env: &EnvRef) -> Result<AST, ASTError> {
 
 fn eval_def(symbol: AST, value: AST, env: &mut EnvRef) -> Result<AST, ASTError> {
     if let AST::Symbol(symbol) = symbol {
-        let ast = eval(value, env.clone())?;
+        let ast = eval(value, env.pass())?;
         env.set(symbol.to_string(), ast.clone());
         Ok(ast)
     } else {
@@ -62,7 +62,7 @@ fn eval_let<'a, It>(bindings: It, env: &mut EnvRef) -> Result<(), ASTError>
 {
     for (symbol, value) in bindings.into_iter().tuples() {
         if let AST::Symbol(symbol) = symbol {
-            let value = eval(value.clone(), env.clone())?;
+            let value = eval(value.clone(), env.pass())?;
             env.set(symbol.to_string(), value);
         } else {
             return Err(CanOnlyDefineSymbols(symbol.clone()));
@@ -72,11 +72,12 @@ fn eval_let<'a, It>(bindings: It, env: &mut EnvRef) -> Result<(), ASTError>
 }
 
 fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &EnvRef) -> Result<AST, ASTError> {
-    // A temporary env is used to prevent mutation when evaluating the condition
-    let condition_env = EnvRef::refer_to(env.clone());
-    Ok(match eval(condition, condition_env)? {
-        AST::Nil | AST::Bool(false) => if_false_body,
-        _                           => if_true_body,
+    Ok({
+        // A temporary env is used to prevent mutation when evaluating the condition
+        match eval(condition, env.wrap())? {
+            AST::Nil | AST::Bool(false) => if_false_body,
+            _                           => if_true_body,
+        }
     })
 }
 
@@ -94,12 +95,12 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTErro
         }
     }
 
-    let captured_env = env.clone();
+    let captured_env = env.wrap();
 
     Ok(make_function!(move |args: ASTArgs| -> Result<AST, ASTError> {
         expect_arity!(args, symbols.len());
 
-        let mut call_env = EnvRef::refer_to(captured_env.clone());
+        let mut call_env = captured_env.wrap();
         for (symbol, value) in symbols.iter().zip(args.iter()) {
             call_env.set(symbol.clone(), value.clone());
         }
@@ -133,7 +134,7 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
                         let let_symbol = args.pop_front().unwrap();
                         let let_value = args.pop_front().unwrap();
 
-                        let mut let_env = EnvRef::refer_to(env);
+                        let mut let_env = env.wrap();
 
                         match let_symbol {
                             AST::List(bindings)   => eval_let(bindings, &mut let_env)?,
@@ -149,7 +150,7 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
                     "do" => {
                         ast = AST::Nil;
                         for arg in args {
-                            ast = eval(arg, env.clone())?;
+                            ast = eval(arg, env.pass())?;
                         }
                         continue; // don't run the `apply` phase just yet
                     }
@@ -250,20 +251,15 @@ fn main() -> io::Result<()> {
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    // initialize repl environment
-    let mut env = Env::new();
-    for (symbol, value) in core::ns() {
-        env.set(symbol, value);
-    }
+    let mut env = EnvRef::new(core::ns());
 
     // add `eval` method to repl environment
-    let mut env = EnvRef::new(env);
-    let captured_env = env.clone();
+    let captured_env = env.wrap();
     env.set("eval".to_string(), function!(ast {
-        eval(ast.clone(), captured_env.clone())
+        eval(ast.clone(), captured_env.pass())
     }));
 
-    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.clone());
+    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
 
     loop {
         match rl.readline("user> ") {
@@ -271,7 +267,7 @@ fn main() -> io::Result<()> {
                 rl.add_history_entry(line.to_string());
                 rl.save_history(".mal-history").unwrap();
                 if line.len() > 0 {
-                    println!("{}", rep(&line, env.clone()));
+                    println!("{}", rep(&line, env.pass()));
                 }
             },
             Err(ReadlineError::Interrupted) => continue,

@@ -1,28 +1,27 @@
 use std::fs::File;
 use std::io::{Read, BufReader};
-use std::collections::HashMap;
 
-use crate::types::MalType;
+use crate::env::Env;
 use crate::printer::pr_str;
 use crate::reader::read_str;
 
-pub(crate) fn ns() -> HashMap<String, MalType> {
-    let mut symbols = HashMap::new();
+pub(crate) fn ns() -> Env {
+    let mut env = Env::new();
 
-    symbols.insert("+".to_string(), binary_operator!(Number + Number -> Number));
-    symbols.insert("-".to_string(), binary_operator!(Number - Number -> Number));
-    symbols.insert("*".to_string(), binary_operator!(Number * Number -> Number));
-    symbols.insert("/".to_string(), binary_operator!(Number / Number -> Number));
+    env.set("+".to_string(), binary_operator!(Number + Number -> Number));
+    env.set("-".to_string(), binary_operator!(Number - Number -> Number));
+    env.set("*".to_string(), binary_operator!(Number * Number -> Number));
+    env.set("/".to_string(), binary_operator!(Number / Number -> Number));
 
-    symbols.insert("<".to_string(), binary_operator!(Number < Number -> Bool));
-    symbols.insert(">".to_string(), binary_operator!(Number > Number -> Bool));
-    symbols.insert("<".to_string(), binary_operator!(Number <= Number -> Bool));
-    symbols.insert(">".to_string(), binary_operator!(Number >= Number -> Bool));
+    env.set("<".to_string(), binary_operator!(Number < Number -> Bool));
+    env.set(">".to_string(), binary_operator!(Number > Number -> Bool));
+    env.set("<".to_string(), binary_operator!(Number <= Number -> Bool));
+    env.set(">".to_string(), binary_operator!(Number >= Number -> Bool));
 
-    symbols.insert("inc".to_string(), function!(x: Number -> Number { Ok(x + Int(1)) }));
-    symbols.insert("dec".to_string(), function!(x: Number -> Number { Ok(x - Int(1)) }));
+    env.set("inc".to_string(), function!(x: Number -> Number { Ok(x + Int(1)) }));
+    env.set("dec".to_string(), function!(x: Number -> Number { Ok(x - Int(1)) }));
 
-    symbols.insert("not".to_string(), function!(x -> Bool {
+    env.set("not".to_string(), function!(x -> Bool {
         Ok({
             match x {
                 Bool(p)    => !p,
@@ -35,18 +34,18 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         })
     }));
 
-    symbols.insert("=".to_string(), function!(a, b -> Bool { Ok(a == b) }));
-    symbols.insert("!=".to_string(), function!(a, b -> Bool { Ok(a != b) }));
+    env.set("=".to_string(), function!(a, b -> Bool { Ok(a == b) }));
+    env.set("!=".to_string(), function!(a, b -> Bool { Ok(a != b) }));
 
-    symbols.insert("nil".to_string(), function!(x -> Bool {
+    env.set("nil".to_string(), function!(x -> Bool {
         Ok(if let Nil = x { true } else { false })
     }));
 
-    symbols.insert("list?".to_string(), function!(ls -> Bool {
+    env.set("list?".to_string(), function!(ls -> Bool {
         Ok(if let List(_) = ls { true } else { false })
     }));
 
-    symbols.insert("empty?".to_string(), function!(ls -> Bool {
+    env.set("empty?".to_string(), function!(ls -> Bool {
         match ls {
             Nil        => Ok(true),
             List(ls)   => Ok(ls.is_empty()),
@@ -55,11 +54,11 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }
     }));
 
-    symbols.insert("list".to_string(), variadic_function!(args {
+    env.set("list".to_string(), variadic_function!(args {
         Ok(List(args.to_owned()))
     }));
 
-    symbols.insert("count".to_string(), function!(ls -> Number {
+    env.set("count".to_string(), function!(ls -> Number {
         match ls {
             Nil        => Ok(Int(0)),
             List(ls)   => Ok(Int(ls.len() as i64)),
@@ -68,7 +67,7 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }
     }));
 
-    symbols.insert("pr-str".to_string(), variadic_function!(args {
+    env.set("pr-str".to_string(), variadic_function!(args {
         Ok(Str({
             let mut s = String::new();
             for (i, arg) in args.iter().enumerate() {
@@ -81,7 +80,7 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }))
     }));
 
-    symbols.insert("str".to_string(), variadic_function!(args {
+    env.set("str".to_string(), variadic_function!(args {
         Ok(Str({
             let mut s = String::new();
             for arg in args.iter() {
@@ -91,7 +90,7 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         }))
     }));
 
-    symbols.insert("prn".to_string(), variadic_function!(args {
+    env.set("prn".to_string(), variadic_function!(args {
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
                 print!(" ");
@@ -102,7 +101,7 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         Ok(Nil)
     }));
 
-    symbols.insert("println".to_string(), variadic_function!(args {
+    env.set("println".to_string(), variadic_function!(args {
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
                 print!(" ");
@@ -113,11 +112,11 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         Ok(Nil)
     }));
 
-    symbols.insert("read-string".to_string(), function!(s: Str {
+    env.set("read-string".to_string(), function!(s: Str {
         read_str(&s).transpose().unwrap_or(Ok(Nil))
     }));
 
-    symbols.insert("slurp".to_string(), function!(filename: Str {
+    env.set("slurp".to_string(), function!(filename: Str {
         let file = File::open(&filename).map_err(IOError)?;
 
         let mut contents = String::new();
@@ -127,28 +126,28 @@ pub(crate) fn ns() -> HashMap<String, MalType> {
         read_str(&contents).transpose().unwrap_or(Ok(Nil))
     }));
 
-    symbols.insert("atom".to_string(), function!(x {
+    env.set("atom".to_string(), function!(x {
         Ok(MalType::atom(x.clone()))
     }));
 
-    symbols.insert("atom?".to_string(), function!(x -> Bool {
+    env.set("atom?".to_string(), function!(x -> Bool {
         Ok(if let Atom(_) = x { true } else { false })
     }));
 
-    symbols.insert("deref".to_string(), function!(x: Atom {
+    env.set("deref".to_string(), function!(x: Atom {
         Ok({
             let x = x.borrow();
             x.clone()
         })
     }));
 
-    symbols.insert("reset!".to_string(), function!(x: Atom, value {
+    env.set("reset!".to_string(), function!(x: Atom, value {
         Ok(x.replace(value.clone()))
     }));
 
-    //symbols.insert("swap!".to_string(), function!(x: Atom, f: Function {
+    //env.set("swap!".to_string(), function!(x: Atom, f: Function {
     //    Ok(x.replace_with(f)) // TODO have `f` take extra arguments
     //}));
 
-    symbols
+    env
 }

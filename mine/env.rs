@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::types::MalType;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct Env {
     outer: Option<EnvRef>,
     data: HashMap<String, MalType>,
@@ -20,7 +20,7 @@ impl Env {
         }
     }
 
-    pub fn wrap(outer: EnvRef) -> Self {
+    fn wrap(outer: EnvRef) -> Self {
         Env {
             outer: Some(outer),
             data: HashMap::new(),
@@ -44,7 +44,7 @@ impl Env {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct EnvRef(Rc<RefCell<Env>>);
 
 impl EnvRef {
@@ -52,8 +52,17 @@ impl EnvRef {
         EnvRef(Rc::new(RefCell::new(env)))
     }
 
-    pub fn refer_to(outer: EnvRef) -> Self {
-        Self::new(Env::wrap(outer))
+    pub fn pass(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn wrap(&self) -> Self {
+        Self::new(Env::wrap(self.clone()))
+    }
+
+    // private clone to ensure clear outside use
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<MalType>
