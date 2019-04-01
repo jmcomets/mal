@@ -10,7 +10,7 @@ struct Reader(Vec<Token>);
 impl Reader {
     fn new(mut tokens: Vec<Token>) -> Self {
         tokens.reverse();
-        Reader(tokens)
+        Self(tokens)
     }
 
     fn next(&mut self) -> Option<Token> {
@@ -22,37 +22,49 @@ impl Reader {
     }
 }
 
-const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
+struct ReaderFeed(Vec<Token>);
 
-#[derive(Debug, PartialEq)]
-pub(crate) struct ReaderParseError;
+impl ReaderFeed {
+    fn new() -> Self {
+        Self(vec![])
+    }
 
-impl FromStr for Reader {
-    type Err = MalError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn feed_line(&mut self, s: &str) -> Result<(), MalError> {
+        const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
         lazy_static! { static ref RE: Regex = Regex::new(TOKENS_REGEX).unwrap(); }
 
         // tokenize
-        let tokens: Result<Vec<_>, _> = RE.captures_iter(s)
-            .map(|cap| Token::from_str(str::from_utf8(cap[1].as_bytes()).unwrap()))
-            .collect();
-        tokens.map(Reader::new)
+        let it = RE.captures_iter(s);
+
+        // optimization: reserve the space for the expected number of tokens
+        let (lower, _) = it.size_hint();
+        self.0.reserve(lower);
+
+        // append the tokens
+        for captures in it {
+            let s = str::from_utf8(captures[1].as_bytes()).unwrap();
+            if s == ";" { break; } // ignore any following tokens
+            self.0.push(Token::from_str(s)?);
+        }
+
+        Ok(())
+    }
+
+    fn finalize(self) -> Reader {
+        Reader::new(self.0)
     }
 }
 
 #[derive(Debug, PartialEq)]
 enum Token {
-    Special(char),   // []{}()'`~^@
-    SpliceUnquote,   // ~@
-    Comment,         // The ";" token
-    Literal(Literal),// integers, floats, booleans, strings, nil, ...
-    Symbol(String),  // identifiers
+    Special(char),    // []{}()'`~^@
+    SpliceUnquote,    // ~@
+    Literal(Literal), // integers, floats, booleans, strings, nil, ...
+    Symbol(String),   // identifiers
 }
 
 const SPECIAL_CHARS: &str = "[]{}()'`~^@";
 const SPLICE_UNQUOTE: &str = "~@";
-const COMMENT_CHAR: char = ';';
 
 impl FromStr for Token {
     type Err = MalError;
@@ -63,8 +75,6 @@ impl FromStr for Token {
             let c = s.chars().next().unwrap();
             if SPECIAL_CHARS.contains(c) {
                 return Ok(Token::Special(c));
-            } else if c == COMMENT_CHAR {
-                return Ok(Token::Comment);
             }
         } else if s == SPLICE_UNQUOTE {
             return Ok(Token::SpliceUnquote);
@@ -150,8 +160,9 @@ impl FromStr for Literal {
 }
 
 pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, MalError> {
-    let mut reader = Reader::from_str(s)?;
-    read_form(&mut reader)
+    let mut feed = ReaderFeed::new();
+    feed.feed_line(s)?;
+    read_form(&mut feed.finalize())
 }
 
 fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
