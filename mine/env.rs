@@ -8,31 +8,33 @@ use fnv::FnvHashMap;
 use crate::types::MalType;
 
 #[derive(Debug)]
-pub(crate) struct Env {
-    outer: Option<EnvRef>,
-    data: FnvHashMap<String, MalType>,
+struct EnvStruct {
+    data: RefCell<FnvHashMap<String, MalType>>,
+    outer: Option<Env>,
 }
 
-impl Env {
+impl EnvStruct {
     pub fn new() -> Self {
-        Env {
+        EnvStruct {
             outer: None,
-            data: FnvHashMap::default(),
+            data: RefCell::new(FnvHashMap::default()),
         }
     }
 
-    fn wrap(outer: EnvRef) -> Self {
-        Env {
+    fn wrap(outer: Env) -> Self {
+        EnvStruct {
             outer: Some(outer),
-            data: FnvHashMap::default(),
+            data: RefCell::new(FnvHashMap::default()),
         }
     }
 
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<MalType>
+    fn get<Q: ?Sized>(&self, key: &Q) -> Option<MalType>
         where String: Borrow<Q>,
               Q: Hash + Eq,
     {
-        self.data.get(key)
+        self.data
+            .borrow()
+            .get(key)
             .map(Clone::clone)
             .or_else(|| {
                 self.outer.as_ref()
@@ -40,42 +42,44 @@ impl Env {
             })
     }
 
-    pub fn set(&mut self, key: String, value: MalType) {
-        self.data.insert(key, value);
+    fn set(&self, key: String, value: MalType) {
+        self.data
+            .borrow_mut()
+            .insert(key, value);
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct EnvRef(Rc<RefCell<Env>>);
+pub(crate) struct Env(Rc<EnvStruct>);
 
-impl EnvRef {
-    pub fn new(env: Env) -> Self {
-        EnvRef(Rc::new(RefCell::new(env)))
-    }
-
+impl Env {
     pub fn pass(&self) -> Self {
         self.clone()
     }
 
     pub fn wrap(&self) -> Self {
-        Self::new(Env::wrap(self.clone()))
-    }
-
-    // private clone to ensure clear outside use
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self(Rc::new(EnvStruct::wrap(self.clone())))
     }
 
     pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<MalType>
         where String: Borrow<Q>,
               Q: Hash + Eq,
     {
-        (*self.0).borrow().get(key)
+        self.0.get(key)
     }
 
-    pub fn set(&mut self, key: String, value: MalType) {
-        self.0
-            .borrow_mut()
-            .set(key, value)
+    pub fn set(&self, key: String, value: MalType) {
+        self.0.set(key, value)
+    }
+
+    // private clone to ensure clear outside use
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Self(Rc::new(EnvStruct::new()))
     }
 }

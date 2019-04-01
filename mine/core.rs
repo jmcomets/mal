@@ -6,7 +6,7 @@ use crate::printer::pr_str;
 use crate::reader::read_str;
 
 pub(crate) fn ns() -> Env {
-    let mut env = Env::new();
+    let env = Env::default();
 
     env.set("+".to_string(), binary_operator!(Number + Number -> Number));
     env.set("-".to_string(), binary_operator!(Number - Number -> Number));

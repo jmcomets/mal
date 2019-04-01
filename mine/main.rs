@@ -16,7 +16,7 @@ mod printer;
 mod reader;
 mod types;
 
-use env::EnvRef;
+use env::Env;
 
 use types::{
     MalType as AST,
@@ -30,7 +30,7 @@ fn read(s: &str) -> Result<Option<AST>, ASTError> {
 
 use ASTError::*;
 
-fn eval_ast_list<T>(elements: T, env: &EnvRef) -> Result<T, ASTError>
+fn eval_ast_list<T>(elements: T, env: &Env) -> Result<T, ASTError>
     where T: IntoIterator<Item=AST> + FromIterator<AST>,
 {
     elements.into_iter()
@@ -38,7 +38,7 @@ fn eval_ast_list<T>(elements: T, env: &EnvRef) -> Result<T, ASTError>
         .collect()
 }
 
-fn eval_ast(ast: AST, env: &EnvRef) -> Result<AST, ASTError> {
+fn eval_ast(ast: AST, env: &Env) -> Result<AST, ASTError> {
     match ast {
         AST::Symbol(symbol)   => Ok(env.get(&symbol).unwrap_or(AST::Symbol(symbol))),
         AST::List(elements)   => eval_ast_list(elements, env).map(AST::List),
@@ -47,7 +47,7 @@ fn eval_ast(ast: AST, env: &EnvRef) -> Result<AST, ASTError> {
     }
 }
 
-fn eval_def(symbol: AST, value: AST, env: &mut EnvRef) -> Result<AST, ASTError> {
+fn eval_def(symbol: AST, value: AST, env: &mut Env) -> Result<AST, ASTError> {
     if let AST::Symbol(symbol) = symbol {
         let ast = eval(value, env.pass())?;
         env.set(symbol.to_string(), ast.clone());
@@ -57,7 +57,7 @@ fn eval_def(symbol: AST, value: AST, env: &mut EnvRef) -> Result<AST, ASTError> 
     }
 }
 
-fn eval_let<'a, It>(bindings: It, env: &mut EnvRef) -> Result<(), ASTError>
+fn eval_let<'a, It>(bindings: It, env: &mut Env) -> Result<(), ASTError>
     where It: IntoIterator<Item=AST>,
 {
     for (symbol, value) in bindings.into_iter().tuples() {
@@ -71,7 +71,7 @@ fn eval_let<'a, It>(bindings: It, env: &mut EnvRef) -> Result<(), ASTError>
     Ok(())
 }
 
-fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &EnvRef) -> Result<AST, ASTError> {
+fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &Env) -> Result<AST, ASTError> {
     Ok({
         // A temporary env is used to prevent mutation when evaluating the condition
         match eval(condition, env.wrap())? {
@@ -81,7 +81,7 @@ fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &EnvRef
     })
 }
 
-fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTError>
+fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
     where It: IntoIterator<Item=AST>,
 {
     let it = bindings.into_iter();
@@ -100,7 +100,7 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTErro
     Ok(make_function!(move |args: ASTArgs| -> Result<AST, ASTError> {
         expect_arity!(args, symbols.len());
 
-        let mut call_env = captured_env.wrap();
+        let call_env = captured_env.wrap();
         for (symbol, value) in symbols.iter().zip(args.into_iter()) {
             call_env.set(symbol.to_string(), value);
         }
@@ -109,7 +109,7 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTErro
     }))
 }
 
-fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
+fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
     loop {
         if let AST::List(mut elements) = ast.clone() {
             if elements.is_empty() {
@@ -232,14 +232,14 @@ fn print_error(ast_error: &ASTError) -> String {
     }
 }
 
-fn eval_print(ast: AST, env: EnvRef) -> String {
+fn eval_print(ast: AST, env: Env) -> String {
     match eval(ast, env) {
         Ok(ast) => print(&ast),
         Err(e)  => print_error(&e),
     }
 }
 
-fn rep(s: &str, env: EnvRef) -> String {
+fn rep(s: &str, env: Env) -> String {
     match read(s) {
         Ok(Some(ast)) => eval_print(ast, env),
         Ok(None)      => "EOF".to_string(),
@@ -252,7 +252,7 @@ fn main() -> io::Result<()> {
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let mut env = EnvRef::new(core::ns());
+    let env = core::ns();
 
     // add `eval` method to repl environment
     let captured_env = env.wrap();
