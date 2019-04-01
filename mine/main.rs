@@ -39,8 +39,8 @@ fn eval_ast_list<T>(elements: T, env: &EnvRef) -> Result<T, ASTError>
 }
 
 fn eval_ast(ast: AST, env: &EnvRef) -> Result<AST, ASTError> {
-    match ast.clone() {
-        AST::Symbol(symbol)   => Ok(env.get(&symbol[..]).unwrap_or(ast)),
+    match ast {
+        AST::Symbol(symbol)   => Ok(env.get(&symbol).unwrap_or(AST::Symbol(symbol))),
         AST::List(elements)   => eval_ast_list(elements, env).map(AST::List),
         AST::Vector(elements) => eval_ast_list(elements, env).map(AST::Vector),
         ast @ _               => Ok(ast),
@@ -82,14 +82,14 @@ fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &EnvRef
 }
 
 fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTError>
-    where It: IntoIterator<Item=&'a AST>,
+    where It: IntoIterator<Item=AST>,
 {
     let it = bindings.into_iter();
     let (min_capacity, _) = it.size_hint();
     let mut symbols = Vec::with_capacity(min_capacity);
     for value in it {
         if let AST::Symbol(symbol) = value {
-            symbols.push(symbol.clone());
+            symbols.push(symbol);
         } else {
             return Err(CanOnlyDefineSymbols(value.clone()));
         }
@@ -101,8 +101,8 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &EnvRef) -> Result<AST, ASTErro
         expect_arity!(args, symbols.len());
 
         let mut call_env = captured_env.wrap();
-        for (symbol, value) in symbols.iter().zip(args.iter()) {
-            call_env.set(symbol.clone(), value.clone());
+        for (symbol, value) in symbols.iter().zip(args.into_iter()) {
+            call_env.set(symbol.to_string(), value);
         }
 
         eval(body.clone(), call_env)
@@ -170,18 +170,18 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
                         let fn_symbol = args.pop_front().unwrap();
                         let fn_body = args.pop_front().unwrap();
 
-                        match fn_symbol.clone() {
-                            AST::List(ref bindings) => {
+                        match fn_symbol {
+                            AST::List(bindings) => {
                                 ast = eval_fn(bindings, fn_body, &env)?;
                                 continue; // don't run the `apply` phase just yet
                             }
 
-                            AST::Vector(ref bindings) => {
+                            AST::Vector(bindings) => {
                                 ast = eval_fn(bindings, fn_body, &env)?;
                                 continue; // don't run the `apply` phase just yet
                             }
 
-                            _ => return Err(CannotBindArguments(fn_symbol))
+                            fn_symbol @ _ => return Err(CannotBindArguments(fn_symbol))
                         }
                     }
 
@@ -192,12 +192,13 @@ fn eval(mut ast: AST, mut env: EnvRef) -> Result<AST, ASTError> {
             }
 
             // `apply` phase
-            if let AST::List(elements) = eval_ast(ast, &mut env)? {
+            if let AST::List(mut elements) = eval_ast(ast, &mut env)? {
+                let symbol = elements.pop_front().unwrap();
                 return {
-                    match &elements[0] {
-                        AST::Function(func) => func(elements.skip(1)),
+                    match symbol {
+                        AST::Function(func) => func(elements),
                         AST::Symbol(symbol) => Err(SymbolNotFound(symbol.to_string())),
-                        ast @ _             => Err(NotEvaluable(ast.clone())),
+                        ast @ _             => Err(NotEvaluable(ast)),
                     }
                 };
             } else {
