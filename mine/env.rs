@@ -1,29 +1,30 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
+
+use fnv::FnvHashMap;
 
 use crate::types::MalType;
 
 #[derive(Debug)]
 pub(crate) struct Env {
     outer: Option<EnvRef>,
-    data: HashMap<String, MalType>,
+    data: FnvHashMap<String, MalType>,
 }
 
 impl Env {
     pub fn new() -> Self {
         Env {
             outer: None,
-            data: HashMap::new(),
+            data: FnvHashMap::default(),
         }
     }
 
     fn wrap(outer: EnvRef) -> Self {
         Env {
             outer: Some(outer),
-            data: HashMap::new(),
+            data: FnvHashMap::default(),
         }
     }
 

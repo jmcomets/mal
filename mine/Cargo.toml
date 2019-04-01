@@ -9,6 +9,7 @@ regex = "1.1.2"
 rustyline = "3.0.0"
 im = "12.3.3"
 itertools = "0.8.0"
+fnv = "1.0.6"
 
 [[bin]]
 name = "mine"
