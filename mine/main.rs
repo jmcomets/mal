@@ -24,10 +24,6 @@ use types::{
     MalArgs as ASTArgs,
 };
 
-fn read(s: &str) -> Result<Option<AST>, ASTError> {
-    reader::read_str(s)
-}
-
 use ASTError::*;
 
 fn eval_ast_list<T>(elements: T, env: &Env) -> Result<T, ASTError>
@@ -216,19 +212,20 @@ fn print(ast: &AST) -> String {
 
 fn print_error(ast_error: &ASTError) -> String {
     match ast_error {
-        CanOnlyDefineSymbols(ast)        => format!("can only define symbols (not '{}')", print(&ast)),
-        CannotBindArguments(ast)         => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
-        NotEvaluable(ast)                => format!("cannot evaluate '{}'", print(&ast)),
-        SymbolNotFound(symbol)           => format!("symbol '{}' not found", symbol),
-        TypeCheckFailed {}               => format!("typecheck failed"),
-        ArityError { expected, reached } => format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
-        UnbalancedString                 => "unbalanced string".to_string(),
-        UnbalancedList                   => "unbalanced list".to_string(),
-        NotHashable(ast)                 => format!("{} is not hashable", print(&ast)),
-        OddMapEntries                    => "odd number of entries in map".to_string(),
-        DuplicateKey(ast)                => format!("duplicate key {}", print(&ast)),
-        LoneDeref                        => "'@' must be followed by a value".to_string(),
-        IOError(e)                       => format!("I/O error: {:?}", e),
+        CanOnlyDefineSymbols(ast)                  => format!("can only define symbols (not '{}')", print(&ast)),
+        CannotBindArguments(ast)                   => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
+        NotEvaluable(ast)                          => format!("cannot evaluate '{}'", print(&ast)),
+        SymbolNotFound(symbol)                     => format!("symbol '{}' not found", symbol),
+        TypeCheckFailed {}                         => format!("typecheck failed"),
+        ArityError { expected, reached }           => format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
+        UnbalancedString                           => "unbalanced string".to_string(),
+        MismatchedDelimiters(open, close, reached) => format!("unclosed delimiter '{}', expected a '{}' but got '{}'", open, close, reached),
+        UnmatchedDelimiter(open, close)            => format!("unclosed '{}', expected a '{}'", open, close),
+        NotHashable(ast)                           => format!("{} is not hashable", print(&ast)),
+        OddMapEntries                              => "odd number of entries in map".to_string(),
+        DuplicateKey(ast)                          => format!("duplicate key {}", print(&ast)),
+        LoneDeref                                  => "'@' must be followed by a value".to_string(),
+        IOError(e)                                 => format!("I/O error: {:?}", e),
     }
 }
 
@@ -239,8 +236,13 @@ fn eval_print(ast: AST, env: Env) -> String {
     }
 }
 
-fn rep(s: &str, env: Env) -> String {
-    match read(s) {
+fn read(reader: &mut reader::Reader, s: &str) -> Result<Option<AST>, ASTError> {
+    reader.push(s)?;
+    reader.pop()
+}
+
+fn rep(reader: &mut reader::Reader, s: &str, env: Env) -> String {
+    match read(reader, s) {
         Ok(Some(ast)) => eval_print(ast, env),
         Ok(None)      => "EOF".to_string(),
         Err(e)        => print_error(&e),
@@ -260,7 +262,9 @@ fn main() -> io::Result<()> {
         eval(ast.clone(), captured_env.pass())
     }));
 
-    rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
+    let mut reader = reader::Reader::new();
+
+    rep(&mut reader, "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
 
     loop {
         match rl.readline("user> ") {
@@ -268,7 +272,7 @@ fn main() -> io::Result<()> {
                 rl.add_history_entry(line.to_string());
                 rl.save_history(".mal-history").unwrap();
                 if line.len() > 0 {
-                    println!("{}", rep(&line, env.pass()));
+                    println!("{}", rep(&mut reader, &line, env.pass()));
                 }
             },
             Err(ReadlineError::Interrupted) => continue,

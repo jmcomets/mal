@@ -10,6 +10,26 @@ macro_rules! make_list {
     }
 }
 
+#[cfg(test)]
+macro_rules! make_vector {
+    ($($item:expr),*) => {
+        $crate::types::MalType::Vector(vec![$($item)*])
+    }
+}
+
+#[cfg(test)]
+macro_rules! make_dict {
+    ($($key:expr, $value:expr),*) => {
+        #[allow(unused_mut)] {
+            let mut m = im::HashMap::new();
+            $(
+                m.insert($key, $value);
+            )*
+            $crate::types::MalType::Dict(m)
+        }
+    }
+}
+
 macro_rules! make_function {
     ($f:expr) => {
         {

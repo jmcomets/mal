@@ -1,35 +1,33 @@
-use im::HashMap as ImHashMap;
 use std::str::{self, FromStr};
 
 use regex::Regex;
 
-use crate::types::{MalType, MalError, MalHashable, MalNumber};
+use crate::types::{MalType, MalError, MalNumber};
 
-struct Reader(Vec<Token>);
+pub(crate) struct Reader {
+    tokens: Vec<Token>,
+    lists: Vec<(char, char, Vec<MalType>)>,
+}
+
+pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, MalError> {
+    let mut reader = Reader::new();
+    reader.push(s)?;
+    reader.pop() // TODO raise an error if the reader isn't empty
+}
 
 impl Reader {
-    fn new(mut tokens: Vec<Token>) -> Self {
-        tokens.reverse();
-        Self(tokens)
+    pub fn new() -> Self {
+        Self{
+            tokens: vec![],
+            lists: vec![],
+        }
     }
 
     fn next(&mut self) -> Option<Token> {
-        self.0.pop()
+        self.tokens.pop()
     }
 
-    fn peek(&self) -> Option<&Token> {
-        self.0.last()
-    }
-}
-
-struct ReaderFeed(Vec<Token>);
-
-impl ReaderFeed {
-    fn new() -> Self {
-        Self(vec![])
-    }
-
-    fn feed_line(&mut self, s: &str) -> Result<(), MalError> {
+    pub fn push(&mut self, s: &str) -> Result<(), MalError> {
         const TOKENS_REGEX: &str = r#"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"#;
         lazy_static! { static ref RE: Regex = Regex::new(TOKENS_REGEX).unwrap(); }
 
@@ -38,20 +36,126 @@ impl ReaderFeed {
 
         // optimization: reserve the space for the expected number of tokens
         let (lower, _) = it.size_hint();
-        self.0.reserve(lower);
+        self.tokens.reserve(lower);
 
         // append the tokens
         for captures in it {
             let s = str::from_utf8(captures[1].as_bytes()).unwrap();
             if s == ";" { break; } // ignore any following tokens
-            self.0.push(Token::from_str(s)?);
+            self.tokens.push(Token::from_str(s)?);
         }
 
         Ok(())
     }
 
-    fn finalize(self) -> Reader {
-        Reader::new(self.0)
+    pub fn pop(&mut self) -> Result<Option<MalType>, MalError> {
+        // reverse the tokens for faster popping/pushing
+        self.tokens.reverse();
+
+        let form = self.read_form();
+
+        // reverse back the tokens for stability
+        self.tokens.reverse();
+
+        form
+    }
+
+    fn read_list_opening(&mut self, opening: char, closing: char) -> Result<Option<MalType>, MalError> {
+        self.lists.push((opening, closing, vec![])); // opens the list
+        let list_position = self.lists.len();
+        loop {
+            if let Some(element) = self.read_form()? {
+                if self.lists.len() < list_position {
+                    return Ok(Some(element));
+                } else {
+                    let ref mut elements = self.lists.last_mut().unwrap().2;
+                    elements.push(element);
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn read_list_closing(&mut self, opening: char, closing: char) -> Result<Option<Vec<MalType>>, MalError> {
+        if let Some((open, close, _)) = self.lists.last() {
+            if &closing == close {
+                let (_, _, elements) = self.lists.pop().unwrap(); // closes the lis
+                Ok(Some(elements))
+            } else {
+                return Err(MalError::MismatchedDelimiters(*open, *close, closing));
+            }
+        } else {
+            return Err(MalError::UnmatchedDelimiter(opening, closing));
+        }
+    }
+
+    fn read_form(&mut self) -> Result<Option<MalType>, MalError> {
+        if let Some(token) = self.next() {
+            match token {
+                Token::Special('(') => {
+                    self.read_list_opening('(', ')')
+                }
+
+                Token::Special(')') => {
+                    Ok(self.read_list_closing('(', ')')?
+                        .map(|elements| MalType::List(elements.into_iter().collect())))
+                }
+
+                Token::Special('[') => {
+                    self.read_list_opening('[', ']')
+                }
+
+                Token::Special(']') => {
+                    Ok(self.read_list_closing('[', ']')?
+                        .map(|elements| MalType::Vector(elements)))
+                }
+
+                Token::Special('{') => {
+                    self.read_list_opening('{', '}')
+                }
+
+                Token::Special('}') => {
+                    self.read_list_closing('{', '}')?
+                        .map(|elements| MalType::dict_from_elements(elements))
+                        .transpose()
+                }
+
+                token @ _ => self.read_singleton(token).map(Some),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn read_singleton(&mut self, token: Token) -> Result<MalType, MalError> {
+        match token {
+            Token::Special('@') => {
+                const DEREF_SYMBOL_STR: &str = "deref";
+                if let Some(value) = self.read_form()? {
+                    let deref_symbol = MalType::Symbol(DEREF_SYMBOL_STR.to_string());
+                    Ok(make_list!(deref_symbol, value))
+                } else {
+                    Err(MalError::LoneDeref)
+                }
+            }
+
+            token @ _ => Ok(read_atom(token)),
+        }
+    }
+}
+
+fn read_atom(token: Token) -> MalType {
+    match token {
+        Token::Symbol(s)                  => MalType::Symbol(s),
+        Token::Literal(Literal::Int(i))   => MalType::Number(MalNumber::Int(i)),
+        Token::Literal(Literal::Float(f)) => MalType::Number(MalNumber::Float(f)),
+        Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
+        Token::Literal(Literal::Str(s))   => MalType::Str(s),
+        Token::Literal(Literal::Nil)      => MalType::Nil,
+        token @ _                         => unimplemented!("{:?}", token),
     }
 }
 
@@ -159,89 +263,6 @@ impl FromStr for Literal {
     }
 }
 
-pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, MalError> {
-    let mut feed = ReaderFeed::new();
-    feed.feed_line(s)?;
-    read_form(&mut feed.finalize())
-}
-
-fn read_form(reader: &mut Reader) -> Result<Option<MalType>, MalError> {
-    reader.next()
-        .map(|token| {
-            match token {
-                Token::Special('(') => read_list(reader, ')', |elements| Ok(MalType::List(elements.into_iter().collect()))),
-                Token::Special('[') => read_list(reader, ']', |elements| Ok(MalType::Vector(elements))),
-                Token::Special('{') => read_list(reader, '}', |elements| {
-                    if elements.len() % 2 != 0 {
-                        return Err(MalError::OddMapEntries);
-                    }
-
-                    let mut map = ImHashMap::new();
-
-                    let mut it = elements.into_iter();
-                    while let Some(key) = it.next() {
-                        let key = MalHashable::try_from(key)
-                            .map_err(MalError::NotHashable)?;
-
-                        // this cannot fail because the length is even
-                        let value = it.next().unwrap();
-
-                        let previous = map.insert(key.clone(), value);
-                        if previous.is_some() {
-                            return Err(MalError::DuplicateKey(key.into()));
-                        }
-                    }
-
-                    Ok(MalType::Dict(map))
-                }),
-                Token::Special('@') => {
-                    if let Some(value) = read_form(reader)? {
-                        let deref_symbol = MalType::Symbol("deref".to_string());
-                        Ok(make_list!(deref_symbol, value))
-                    } else {
-                        Err(MalError::LoneDeref)
-                    }
-                }
-                _                   => Ok(read_atom(token))
-            }
-        })
-        .transpose()
-}
-
-fn read_list<T>(reader: &mut Reader, closing: char, consumer: fn(Vec<MalType>) -> Result<T, MalError>) -> Result<T, MalError> {
-    let mut paren_matched = false;
-    let mut elements = vec![];
-    while let Some(token) = reader.peek() {
-        if token == &Token::Special(closing) {
-            reader.next();
-            paren_matched = true;
-            break;
-        }
-
-        if let Some(element) = read_form(reader)? {
-            elements.push(element);
-        }
-    }
-
-    if paren_matched {
-        consumer(elements)
-    } else {
-        Err(MalError::UnbalancedList)
-    }
-}
-
-fn read_atom(token: Token) -> MalType {
-    match token {
-        Token::Symbol(s)                  => MalType::Symbol(s),
-        Token::Literal(Literal::Int(i))   => MalType::Number(MalNumber::Int(i)),
-        Token::Literal(Literal::Float(f)) => MalType::Number(MalNumber::Float(f)),
-        Token::Literal(Literal::Bool(b))  => MalType::Bool(b),
-        Token::Literal(Literal::Str(s))   => MalType::Str(s),
-        Token::Literal(Literal::Nil)      => MalType::Nil,
-        _                                 => unimplemented!(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +298,20 @@ mod tests {
         // strings
         assert_eq!(Literal::from_str("\"foobar\""), Ok(Literal::Str("foobar".to_string())));
         assert_eq!(Literal::from_str("\"foobar"), Err(LiteralParseError::UnbalancedString));
+    }
+
+    #[test]
+    fn test_form_read_empty_collections() {
+        assert_eq!(read_str("()").unwrap(), Some(make_list!()));
+        assert_eq!(read_str("[]").unwrap(), Some(make_vector!()));
+        assert_eq!(read_str("{}").unwrap(), Some(make_dict!()));
+    }
+
+    #[test]
+    fn test_form_read_from_feed() {
+        let mut reader = Reader::new();
+        assert_eq!(reader.push("(").unwrap(), ());
+        assert_eq!(reader.push(")").unwrap(), ());
+        assert_eq!(reader.pop().unwrap(), Some(make_list!()));
     }
 }

@@ -32,6 +32,30 @@ impl MalType {
     pub fn atom(inner: Self) -> Self {
         MalType::Atom(Rc::new(RefCell::new(inner)))
     }
+
+    pub fn dict_from_elements(elements: Vec<MalType>) -> Result<Self, MalError> {
+        if elements.len() % 2 != 0 {
+            return Err(MalError::OddMapEntries);
+        }
+
+        let mut map = ImHashMap::new();
+
+        let mut it = elements.into_iter();
+        while let Some(key) = it.next() {
+            let key = MalHashable::try_from(key)
+                .map_err(MalError::NotHashable)?;
+
+            // this cannot fail because the length is even
+            let value = it.next().unwrap();
+
+            let previous = map.insert(key.clone(), value);
+            if previous.is_some() {
+                return Err(MalError::DuplicateKey(key.into()));
+            }
+        }
+
+        Ok(MalType::Dict(map))
+    }
 }
 
 #[derive(Debug)]
@@ -50,7 +74,8 @@ pub(crate) enum MalError {
     CannotBindArguments(MalType),
     SymbolNotFound(String),
     UnbalancedString,
-    UnbalancedList,
+    MismatchedDelimiters(char, char, char),
+    UnmatchedDelimiter(char, char),
     OddMapEntries,
     NotHashable(MalType),
     DuplicateKey(MalType),
@@ -87,6 +112,7 @@ impl PartialEq for MalType {
             (Str(a), Str(b))       => a == b,
             (Vector(a), Vector(b)) => a == b,
             (List(a), List(b))     => a == b,
+            (Dict(a), Dict(b))     => a == b,
             (Symbol(a), Symbol(b)) => a == b,
             (Nil, Nil)             => true,
             _                      => false,
