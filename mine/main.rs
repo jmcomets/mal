@@ -206,46 +206,45 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
     }
 }
 
-fn print(ast: &AST) -> String {
+fn display_value(ast: &AST) -> String {
     printer::pr_str(&ast, true)
 }
 
-fn print_error(ast_error: &ASTError) -> String {
+fn display_error(ast_error: &ASTError) -> String {
     match ast_error {
-        CanOnlyDefineSymbols(ast)                  => format!("can only define symbols (not '{}')", print(&ast)),
-        CannotBindArguments(ast)                   => format!("cannot bind arguments using '{}', expected a list", print(&ast)),
-        NotEvaluable(ast)                          => format!("cannot evaluate '{}'", print(&ast)),
+        CanOnlyDefineSymbols(ast)                  => format!("can only define symbols (not '{}')", display_value(&ast)),
+        CannotBindArguments(ast)                   => format!("cannot bind arguments using '{}', expected a list", display_value(&ast)),
+        NotEvaluable(ast)                          => format!("cannot evaluate '{}'", display_value(&ast)),
         SymbolNotFound(symbol)                     => format!("symbol '{}' not found", symbol),
         TypeCheckFailed {}                         => format!("typecheck failed"),
         ArityError { expected, reached }           => format!("arity error, tried to call symbol expecting {} arguments with {}", expected, reached),
         UnbalancedString                           => "unbalanced string".to_string(),
         MismatchedDelimiters(open, close, reached) => format!("unclosed delimiter '{}', expected a '{}' but got '{}'", open, close, reached),
         UnmatchedDelimiter(open, close)            => format!("unclosed '{}', expected a '{}'", open, close),
-        NotHashable(ast)                           => format!("{} is not hashable", print(&ast)),
+        NotHashable(ast)                           => format!("{} is not hashable", display_value(&ast)),
         OddMapEntries                              => "odd number of entries in map".to_string(),
-        DuplicateKey(ast)                          => format!("duplicate key {}", print(&ast)),
+        DuplicateKey(ast)                          => format!("duplicate key {}", display_value(&ast)),
         LoneDeref                                  => "'@' must be followed by a value".to_string(),
         IOError(e)                                 => format!("I/O error: {:?}", e),
     }
 }
 
-fn eval_print(ast: AST, env: Env) -> String {
-    match eval(ast, env) {
-        Ok(ast) => print(&ast),
-        Err(e)  => print_error(&e),
-    }
-}
+fn read_str(reader: &mut reader::Reader, s: &str, env: &Env) -> Vec<Result<AST, ASTError>> {
+    // Until generators are available, this is the most comprehensive way to emulate them I can
+    // think of. This will either yield a single error caused by the call to `push()` or yield each
+    // call to `pop()`.
+    let mut inner = move || {
+        reader.push(s)?;
+        let mut values = vec![];
+        while let Some(value) = reader.pop() {
+            values.push(eval(value, env.pass()));
+        }
+        Ok(values)
+    };
 
-fn read(reader: &mut reader::Reader, s: &str) -> Result<Option<AST>, ASTError> {
-    reader.push(s)?;
-    reader.pop()
-}
-
-fn rep(reader: &mut reader::Reader, s: &str, env: Env) -> String {
-    match read(reader, s) {
-        Ok(Some(ast)) => eval_print(ast, env),
-        Ok(None)      => "EOF".to_string(),
-        Err(e)        => print_error(&e),
+    match inner() {
+        Ok(values) => values,
+        Err(e)     => vec![Err(e)],
     }
 }
 
@@ -264,15 +263,30 @@ fn main() -> io::Result<()> {
 
     let mut reader = reader::Reader::new();
 
-    rep(&mut reader, "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
+    // rep(&mut reader, "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
+
+    const START_PROMPT: &str = "user> ";
+    const CONTINUE_PROMPT: &str = "... ";
+    let mut prompt = START_PROMPT;
 
     loop {
-        match rl.readline("user> ") {
+        match rl.readline(prompt) {
             Ok(line) => {
                 rl.add_history_entry(line.to_string());
                 rl.save_history(".mal-history").unwrap();
                 if line.len() > 0 {
-                    println!("{}", rep(&mut reader, &line, env.pass()));
+                    for evaluated in read_str(&mut reader, &line, &env) {
+                        match evaluated {
+                            Ok(value) => println!("{}", display_value(&value)),
+                            Err(e)    => eprintln!("{}", display_error(&e)),
+                        }
+                    }
+
+                    if reader.has_unclosed_lists() {
+                        prompt = CONTINUE_PROMPT;
+                    } else {
+                        prompt = START_PROMPT;
+                    }
                 }
             },
             Err(ReadlineError::Interrupted) => continue,

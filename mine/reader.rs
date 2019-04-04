@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::str::{self, FromStr};
 
 use regex::Regex;
@@ -5,26 +6,24 @@ use regex::Regex;
 use crate::types::{MalType, MalError, MalNumber};
 
 pub(crate) struct Reader {
-    tokens: Vec<Token>,
-    lists: Vec<(char, char, Vec<MalType>)>,
+    tokens: VecDeque<Token>,
+    forms: VecDeque<MalType>,
+    unclosed_lists: Vec<(char, char, Vec<MalType>)>,
 }
 
 pub(crate) fn read_str(s: &str) -> Result<Option<MalType>, MalError> {
     let mut reader = Reader::new();
     reader.push(s)?;
-    reader.pop() // TODO raise an error if the reader isn't empty
+    Ok(reader.pop()) // TODO raise an error if the reader isn't empty
 }
 
 impl Reader {
     pub fn new() -> Self {
         Self{
-            tokens: vec![],
-            lists: vec![],
+            tokens: VecDeque::new(),
+            forms: VecDeque::new(),
+            unclosed_lists: vec![],
         }
-    }
-
-    fn next(&mut self) -> Option<Token> {
-        self.tokens.pop()
     }
 
     pub fn push(&mut self, s: &str) -> Result<(), MalError> {
@@ -42,33 +41,38 @@ impl Reader {
         for captures in it {
             let s = str::from_utf8(captures[1].as_bytes()).unwrap();
             if s == ";" { break; } // ignore any following tokens
-            self.tokens.push(Token::from_str(s)?);
+            self.tokens.push_back(Token::from_str(s)?);
+        }
+
+        // read each form in the stream, yielding each "full" form
+        while let Some(form) = self.read_form()? {
+            if let Some((_, _, ref mut elements)) = self.unclosed_lists.last_mut() {
+                elements.push(form);
+            } else {
+                self.forms.push_back(form);
+            }
         }
 
         Ok(())
     }
 
-    pub fn pop(&mut self) -> Result<Option<MalType>, MalError> {
-        // reverse the tokens for faster popping/pushing
-        self.tokens.reverse();
+    pub fn pop(&mut self) -> Option<MalType> {
+        self.forms.pop_front()
+    }
 
-        let form = self.read_form();
-
-        // reverse back the tokens for stability
-        self.tokens.reverse();
-
-        form
+    pub fn has_unclosed_lists(&self) -> bool {
+        !self.unclosed_lists.is_empty()
     }
 
     fn read_list_opening(&mut self, opening: char, closing: char) -> Result<Option<MalType>, MalError> {
-        self.lists.push((opening, closing, vec![])); // opens the list
-        let list_position = self.lists.len();
+        self.unclosed_lists.push((opening, closing, vec![])); // opens the list
+        let list_position = self.unclosed_lists.len();
         loop {
             if let Some(element) = self.read_form()? {
-                if self.lists.len() < list_position {
+                if self.unclosed_lists.len() < list_position {
                     return Ok(Some(element));
                 } else {
-                    let ref mut elements = self.lists.last_mut().unwrap().2;
+                    let ref mut elements = self.unclosed_lists.last_mut().unwrap().2;
                     elements.push(element);
                 }
             } else {
@@ -80,9 +84,9 @@ impl Reader {
     }
 
     fn read_list_closing(&mut self, opening: char, closing: char) -> Result<Option<Vec<MalType>>, MalError> {
-        if let Some((open, close, _)) = self.lists.last() {
+        if let Some((open, close, _)) = self.unclosed_lists.last() {
             if &closing == close {
-                let (_, _, elements) = self.lists.pop().unwrap(); // closes the lis
+                let (_, _, elements) = self.unclosed_lists.pop().unwrap(); // closes the list
                 Ok(Some(elements))
             } else {
                 return Err(MalError::MismatchedDelimiters(*open, *close, closing));
@@ -93,7 +97,7 @@ impl Reader {
     }
 
     fn read_form(&mut self) -> Result<Option<MalType>, MalError> {
-        if let Some(token) = self.next() {
+        if let Some(token) = self.tokens.pop_front() {
             match token {
                 Token::Special('(') => {
                     self.read_list_opening('(', ')')
@@ -266,6 +270,8 @@ impl FromStr for Literal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use MalType::*;
+    use MalNumber::*;
 
     #[test]
     fn test_special_char_parsing() {
@@ -312,6 +318,17 @@ mod tests {
         let mut reader = Reader::new();
         assert_eq!(reader.push("(").unwrap(), ());
         assert_eq!(reader.push(")").unwrap(), ());
-        assert_eq!(reader.pop().unwrap(), Some(make_list!()));
+        assert_eq!(reader.pop(), Some(make_list!()));
+    }
+
+    #[test]
+    fn test_popping_when_incomplete_returns_none() {
+        let mut reader = Reader::new();
+        assert_eq!(reader.push("(").unwrap(), ());
+        assert_eq!(reader.pop(), None);
+        assert_eq!(reader.push("1").unwrap(), ());
+        assert_eq!(reader.pop(), None);
+        assert_eq!(reader.push("2)").unwrap(), ());
+        assert_eq!(reader.pop(), Some(make_list!(Number(Int(1)), Number(Int(2)))));
     }
 }
