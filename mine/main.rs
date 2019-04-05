@@ -17,7 +17,7 @@ mod reader;
 mod types;
 
 use env::Env;
-
+use reader::Reader;
 use types::{
     MalType as AST,
     MalError as ASTError,
@@ -229,22 +229,58 @@ fn display_error(ast_error: &ASTError) -> String {
     }
 }
 
-fn read_str(reader: &mut reader::Reader, s: &str, env: &Env) -> Vec<Result<AST, ASTError>> {
-    // Until generators are available, this is the most comprehensive way to emulate them I can
-    // think of. This will either yield a single error caused by the call to `push()` or yield each
-    // call to `pop()`.
-    let mut inner = move || {
-        reader.push(s)?;
-        let mut values = vec![];
-        while let Some(value) = reader.pop() {
-            values.push(eval(value, env.pass()));
-        }
-        Ok(values)
-    };
+struct Interpreter {
+    reader: Reader,
+    env: Env,
+}
 
-    match inner() {
-        Ok(values) => values,
-        Err(e)     => vec![Err(e)],
+impl Interpreter {
+    fn new() -> Self {
+        let mut instance = Self {
+            reader: Reader::new(),
+            env: core::ns()
+        };
+
+        instance.init();
+
+        instance
+    }
+
+    fn init(&mut self) {
+        // add `eval` method to repl environment
+        let captured_env = self.env.wrap();
+        self.env.set("eval".to_string(), function!(ast {
+            eval(ast.clone(), captured_env.pass())
+        }));
+
+        // evaluate `builtins`, similar to `core` but written in Mal
+        const BUILTINS: &str = include_str!("builtins.mal");
+        for builtin in self.interpret(BUILTINS) {
+            builtin.unwrap(); // this checks that the builtins were read properly
+        }
+    }
+
+    fn interpret(&mut self, s: &str) -> Vec<Result<AST, ASTError>> {
+        // Until generators are available, this is the most comprehensive way to emulate them I can
+        // think of. This will either yield a single error caused by the call to `push()` or yield
+        // each call to `pop()`.
+        let mut inner = move || {
+            self.reader.push(s)?;
+            let mut values = vec![];
+            while let Some(value) = self.reader.pop() {
+                values.push(eval(value, self.env.pass()));
+            }
+            Ok(values)
+        };
+
+        match inner() {
+            Ok(values) => values,
+            Err(e)     => vec![Err(e)],
+        }
+    }
+
+    fn has_unclosed_lists(&self) -> bool {
+        self.reader.has_unclosed_lists()
     }
 }
 
@@ -253,20 +289,7 @@ fn main() -> io::Result<()> {
     let mut rl = Editor::<()>::new();
     let _ = rl.load_history(".mal-history");
 
-    let env = core::ns();
-
-    // add `eval` method to repl environment
-    let captured_env = env.wrap();
-    env.set("eval".to_string(), function!(ast {
-        eval(ast.clone(), captured_env.pass())
-    }));
-
-    let mut reader = reader::Reader::new();
-
-    const BUILTINS: &str = include_str!("builtins.mal");
-    for builtin in read_str(&mut reader, BUILTINS, &env) {
-        builtin.unwrap(); // this checks that the builtins were read properly
-    }
+    let mut interpreter = Interpreter::new();
 
     const START_PROMPT: &str = "user> ";
     const CONTINUE_PROMPT: &str = "... ";
@@ -278,14 +301,14 @@ fn main() -> io::Result<()> {
                 rl.add_history_entry(line.to_string());
                 rl.save_history(".mal-history").unwrap();
                 if line.len() > 0 {
-                    for evaluated in read_str(&mut reader, &line, &env) {
-                        match evaluated {
+                    for expression in interpreter.interpret(&line) {
+                        match expression {
                             Ok(value) => println!("{}", display_value(&value)),
                             Err(e)    => eprintln!("{}", display_error(&e)),
                         }
                     }
 
-                    if reader.has_unclosed_lists() {
+                    if interpreter.has_unclosed_lists() {
                         prompt = CONTINUE_PROMPT;
                     } else {
                         prompt = START_PROMPT;
@@ -302,4 +325,27 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rep<T: IntoIterator<Item=S>, S: AsRef<str>>(items: T) {
+        let mut interpreter = Interpreter::new();
+        for item in items {
+            for expression in interpreter.interpret(item.as_ref()) {
+                expression.unwrap();
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_tco() {
+        rep(vec![
+            "(def! sum (fn* (n acc) (if (= n 0) acc (sum (- n 1) (+ n acc)))))",
+            "(sum 10000 0)"
+        ]);
+    }
 }
