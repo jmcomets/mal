@@ -264,7 +264,33 @@ mod tests {
     }
 
     #[test]
-    fn it_works() {
-        assert!(true);
+    fn it_can_hash_some_types() {
+        let hashables = vec![
+            MalType::Bool(true),
+            make_list!(),
+            MalType::Nil,
+            MalType::Number(MalNumber::Int(42)),
+            MalType::Str("".to_string()),
+            MalType::Symbol("".to_string()),
+        ];
+
+        for hashable in hashables {
+            assert!(MalHashable::try_from(hashable.clone()).is_ok());
+        }
+    }
+
+    #[test]
+    fn it_cannot_hash_some_types() {
+        let non_hashables = vec![
+            MalType::Atom(Rc::new(RefCell::new(MalType::Symbol("".to_string())))),
+            make_dict!(),
+            MalType::Number(MalNumber::Float(0.)),
+            make_vector!(),
+            function!(x { Ok(MalType::Nil) }),
+        ];
+
+        for non_hashable in non_hashables {
+            assert!(MalHashable::try_from(non_hashable.clone()).is_err());
+        }
     }
 }

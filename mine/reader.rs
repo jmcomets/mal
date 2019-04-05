@@ -314,15 +314,16 @@ mod tests {
     }
 
     #[test]
-    fn test_form_read_from_feed() {
+    fn test_form_push_pop() {
         let mut reader = Reader::new();
         assert_eq!(reader.push("(").unwrap(), ());
         assert_eq!(reader.push(")").unwrap(), ());
         assert_eq!(reader.pop(), Some(make_list!()));
+        assert_eq!(reader.pop(), None);
     }
 
     #[test]
-    fn test_popping_when_incomplete_returns_none() {
+    fn test_pop_when_incomplete_returns_none() {
         let mut reader = Reader::new();
         assert_eq!(reader.push("(").unwrap(), ());
         assert_eq!(reader.pop(), None);
@@ -330,5 +331,15 @@ mod tests {
         assert_eq!(reader.pop(), None);
         assert_eq!(reader.push("2)").unwrap(), ());
         assert_eq!(reader.pop(), Some(make_list!(Number(Int(1)), Number(Int(2)))));
+        assert_eq!(reader.pop(), None);
+    }
+
+    #[test]
+    fn test_multiple_pops() {
+        let mut reader = Reader::new();
+        assert_eq!(reader.push("(1 2) (3 4)").unwrap(), ());
+        assert_eq!(reader.pop(), Some(make_list!(Number(Int(1)), Number(Int(2)))));
+        assert_eq!(reader.pop(), Some(make_list!(Number(Int(3)), Number(Int(4)))));
+        assert_eq!(reader.pop(), None);
     }
 }
