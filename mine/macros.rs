@@ -1,11 +1,13 @@
 macro_rules! make_list {
     ($($item:expr),*) => {
-        #[allow(unused_mut)] {
-            let mut v = im::Vector::new();
-            $(
-                v.push_back($item);
-            )*
-            $crate::types::MalType::List(v)
+        {
+            #[allow(unused_mut)] {
+                let mut v = im::Vector::new();
+                $(
+                    v.push_back($item);
+                )*
+                    $crate::types::MalType::List(v)
+            }
         }
     }
 }
