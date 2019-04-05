@@ -263,7 +263,10 @@ fn main() -> io::Result<()> {
 
     let mut reader = reader::Reader::new();
 
-    // rep(&mut reader, "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))", env.pass());
+    const BUILTINS: &str = include_str!("builtins.mal");
+    for builtin in read_str(&mut reader, BUILTINS, &env) {
+        builtin.unwrap(); // this checks that the builtins were read properly
+    }
 
     const START_PROMPT: &str = "user> ";
     const CONTINUE_PROMPT: &str = "... ";
