@@ -55,7 +55,7 @@ pub(crate) fn ns() -> Env {
     }));
 
     env.set("list".to_string(), variadic_function!(args {
-        Ok(List(args.to_owned()))
+        Ok(List(args))
     }));
 
     env.set("count".to_string(), function!(ls -> Number {
@@ -167,7 +167,7 @@ pub(crate) fn ns() -> Env {
             match arg {
                 List(list)   => concatenated.extend(list),
                 Vector(list) => concatenated.extend(list),
-                value @ _    => concatenated.push_back(value),
+                _            => return Err(TypeCheckFailed {}),
             }
         }
         Ok(List(concatenated))
