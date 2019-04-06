@@ -135,19 +135,41 @@ impl Reader {
     }
 
     fn read_singleton(&mut self, token: Token) -> Result<MalType, MalError> {
-        match token {
-            Token::Special('@') => {
-                const DEREF_SYMBOL_STR: &str = "deref";
-                if let Some(value) = self.read_form()? {
-                    let deref_symbol = MalType::Symbol(DEREF_SYMBOL_STR.to_string());
-                    Ok(make_list!(deref_symbol, value))
-                } else {
-                    Err(MalError::LoneDeref)
-                }
+        if let Token::Special(c) = token {
+            if let Some(aliased) = self.read_aliased(c.to_string()) {
+                return aliased;
             }
-
-            token @ _ => Ok(read_atom(token)),
         }
+
+        if let Token::SpliceUnquote = token {
+            if let Some(aliased) = self.read_aliased("~@".to_string()) {
+                return aliased;
+            }
+        }
+
+        Ok(read_atom(token))
+    }
+
+    fn read_aliased(&mut self, s: String) -> Option<Result<MalType, MalError>> {
+        let aliased = {
+            match s.as_str() {
+                "@"  => Some("deref".to_string()),
+                "'"  => Some("quote".to_string()),
+                "`"  => Some("quasiquote".to_string()),
+                "~"  => Some("unquote".to_string()),
+                "~@" => Some("splice-unquote".to_string()),
+                _    => None,
+            }
+        };
+
+        aliased.map(|aliased| {
+            if let Some(value) = self.read_form()? {
+                let symbol = MalType::Symbol(aliased);
+                Ok(make_list!(symbol, value))
+            } else {
+                Err(MalError::MissingFormForAlias(s, aliased))
+            }
+        })
     }
 }
 

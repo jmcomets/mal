@@ -79,7 +79,7 @@ pub(crate) enum MalError {
     OddMapEntries,
     NotHashable(MalType),
     DuplicateKey(MalType),
-    LoneDeref,
+    MissingFormForAlias(String, String),
     IOError(io::Error),
 }
 

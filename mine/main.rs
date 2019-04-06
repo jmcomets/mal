@@ -105,6 +105,39 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
     }))
 }
 
+fn eval_quasiquote(ast: AST) -> Result<AST, ASTError> {
+    Ok(if let AST::List(mut elements) = ast {
+        if !elements.is_empty() {
+            let first = elements.pop_front().unwrap();
+            let second = elements.pop_front().unwrap_or(AST::Nil);
+            if let AST::Symbol(symbol) = first {
+                match symbol.as_str() {
+                    "unquote" => return Ok(second),
+
+                    "splice-unquote" => {
+                        return Ok(make_list!(
+                            AST::Symbol("concat".to_string()),
+                            second,
+                            eval_quasiquote(AST::List(elements))?
+                        ))
+                    }
+
+                    _ => {}
+                }
+            }
+
+            make_list!(
+                AST::Symbol("cons".to_string()),
+                eval_quasiquote(AST::List(elements))?
+            )
+        } else {
+            AST::List(elements)
+        }
+    } else {
+        ast
+    })
+}
+
 fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
     loop {
         if let AST::List(mut elements) = ast.clone() {
@@ -181,6 +214,17 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
                         }
                     }
 
+                    "quote" => {
+                        expect_arity!(args, 1);
+                        return Ok(args.pop_front().unwrap());
+                    }
+
+                    "quasiquote" => {
+                        expect_arity!(args, 1);
+                        ast = eval_quasiquote(args.pop_front().unwrap())?;
+                        continue; // don't run the `apply` phase just yet
+                    }
+
                     _ => {} // run the `apply` phase
                 }
             } else {
@@ -224,7 +268,7 @@ fn display_error(ast_error: &ASTError) -> String {
         NotHashable(ast)                           => format!("{} is not hashable", display_value(&ast)),
         OddMapEntries                              => "odd number of entries in map".to_string(),
         DuplicateKey(ast)                          => format!("duplicate key {}", display_value(&ast)),
-        LoneDeref                                  => "'@' must be followed by a value".to_string(),
+        MissingFormForAlias(c, aliased)            => format!("'{}' (aliased to '{}' must be followed by a value", c, aliased),
         IOError(e)                                 => format!("I/O error: {:?}", e),
     }
 }
