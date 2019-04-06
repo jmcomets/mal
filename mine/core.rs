@@ -149,8 +149,14 @@ pub(crate) fn ns() -> Env {
     //    Ok(x.replace_with(f)) // TODO have `f` take extra arguments
     //}));
 
-    env.set("cons".to_string(), function!(head, tail: List {
-        let mut tail = tail.clone();
+    env.set("cons".to_string(), function!(head, tail {
+        let mut tail = {
+            match tail {
+                List(list)   => list,
+                Vector(list) => list.into_iter().collect(),
+                _            => return Err(TypeCheckFailed {}),
+            }
+        };
         tail.push_front(head);
         Ok(List(tail))
     }));
@@ -158,10 +164,10 @@ pub(crate) fn ns() -> Env {
     env.set("concat".to_string(), variadic_function!(args {
         let mut concatenated = im::Vector::new();
         for arg in args {
-            if let List(list) = arg {
-                concatenated.extend(list);
-            } else {
-                return Err(TypeCheckFailed{});
+            match arg {
+                List(list)   => concatenated.extend(list),
+                Vector(list) => concatenated.extend(list),
+                value @ _    => concatenated.push_back(value),
             }
         }
         Ok(List(concatenated))

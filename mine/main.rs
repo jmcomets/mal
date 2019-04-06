@@ -128,6 +128,7 @@ fn eval_quasiquote(ast: AST) -> Result<AST, ASTError> {
 
             make_list!(
                 AST::Symbol("cons".to_string()),
+                eval_quasiquote(second)?,
                 eval_quasiquote(AST::List(elements))?
             )
         } else {
