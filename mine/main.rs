@@ -105,38 +105,43 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
     }))
 }
 
-fn eval_quasiquote(ast: AST) -> Result<AST, ASTError> {
-    Ok(if let AST::List(mut elements) = ast {
-        if !elements.is_empty() {
-            let first = elements.pop_front().unwrap();
-            let second = elements.pop_front().unwrap_or(AST::Nil);
-            if let AST::Symbol(symbol) = first {
-                match symbol.as_str() {
-                    "unquote" => return Ok(second),
+fn eval_quasiquote_list<T>(elements: T) -> Result<AST, ASTError>
+    where T: IntoIterator<Item=AST> + FromIterator<AST>,
+{
+    let mut it = elements.into_iter();
+    if let Some(first) = it.next() {
+        if let AST::Symbol(symbol) = &first {
+            match symbol.as_str() {
+                "unquote" => return Ok(it.next().unwrap_or(AST::Nil)),
 
-                    "splice-unquote" => {
-                        return Ok(make_list!(
+                "splice-unquote" => {
+                    return Ok(make_list!(
                             AST::Symbol("concat".to_string()),
-                            second,
-                            eval_quasiquote(AST::List(elements))?
-                        ))
-                    }
-
-                    _ => {}
+                            it.next().unwrap_or(AST::Nil),
+                            eval_quasiquote(AST::List(it.collect()))?
+                    ))
                 }
-            }
 
-            make_list!(
-                AST::Symbol("cons".to_string()),
-                eval_quasiquote(second)?,
-                eval_quasiquote(AST::List(elements))?
-            )
-        } else {
-            AST::List(elements)
+                _                 => {}
+            }
         }
+
+        Ok(make_list!(
+            AST::Symbol("cons".to_string()),
+            eval_quasiquote(first)?,
+            eval_quasiquote(AST::List(it.collect()))?
+        ))
     } else {
-        ast
-    })
+        Ok(make_list!(AST::Symbol("quote".to_string()), AST::List(it.collect())))
+    }
+}
+
+fn eval_quasiquote(ast: AST) -> Result<AST, ASTError> {
+    match ast {
+        AST::List(elements)   => eval_quasiquote_list(elements),
+        AST::Vector(elements) => eval_quasiquote_list(elements),
+        _                     => Ok(make_list!(AST::Symbol("quote".to_string()), ast)),
+    }
 }
 
 fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {

@@ -40,7 +40,7 @@ impl Reader {
         // append the tokens
         for captures in it {
             let s = str::from_utf8(captures[1].as_bytes()).unwrap();
-            if s == ";" { break; } // ignore any following tokens
+            if s.starts_with(";") { break; } // ignore any following tokens
             self.tokens.push_back(Token::from_str(s)?);
         }
 
@@ -200,7 +200,7 @@ impl FromStr for Token {
     type Err = MalError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // special characters / comments
+        // special characters
         if s.len() == 1 {
             let c = s.chars().next().unwrap();
             if SPECIAL_CHARS.contains(c) {
