@@ -105,47 +105,74 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
     }))
 }
 
-fn eval_quasiquote_list<T>(elements: T) -> Result<AST, ASTError>
+fn get_pair_from_elements<T>(elements: T) -> Result<(AST, Vec<AST>), AST>
     where T: IntoIterator<Item=AST> + FromIterator<AST>,
 {
     let mut it = elements.into_iter();
-    if let Some(first) = it.next() {
-        if let AST::Symbol(symbol) = &first {
-            match symbol.as_str() {
-                "unquote" => return Ok(it.next().unwrap_or(AST::Nil)),
-
-                "splice-unquote" => {
-                    return Ok(make_list!(
-                            AST::Symbol("concat".to_string()),
-                            it.next().unwrap_or(AST::Nil),
-                            eval_quasiquote(AST::List(it.collect()))?
-                    ))
-                }
-
-                _                 => {}
-            }
-        }
-
-        Ok(make_list!(
-            AST::Symbol("cons".to_string()),
-            eval_quasiquote(first)?,
-            eval_quasiquote(AST::List(it.collect()))?
-        ))
+    if let Some(head) = it.next() {
+        Ok((head, it.collect()))
     } else {
-        Ok(make_list!(AST::Symbol("quote".to_string()), AST::List(it.collect())))
+        Err(make_list!())
+    }
+}
+
+fn get_pair(ast: AST) -> Result<(AST, Vec<AST>), AST>
+{
+    match ast {
+        AST::List(elements)   => get_pair_from_elements(elements),
+        AST::Vector(elements) => get_pair_from_elements(elements),
+        ast @ _               => Err(ast),
     }
 }
 
 fn eval_quasiquote(ast: AST) -> Result<AST, ASTError> {
-    match ast {
-        AST::List(elements)   => eval_quasiquote_list(elements),
-        AST::Vector(elements) => eval_quasiquote_list(elements),
-        _                     => Ok(make_list!(AST::Symbol("quote".to_string()), ast)),
+    match get_pair(ast) {
+        Ok((head, tail)) => {
+            let mut it = tail.into_iter();
+
+            if let AST::Symbol(symbol) = &head {
+                if symbol.as_str() == "unquote" {
+                    return Ok(it.next().unwrap_or(AST::Nil));
+                }
+            }
+
+            let head = {
+                match get_pair(head) {
+                    Ok((AST::Symbol(head_symbol), head_tail)) => {
+                        if head_symbol.as_str() == "splice-unquote" {
+                            return Ok(make_list!(
+                                    AST::Symbol("concat".to_string()),
+                                    AST::List(head_tail.into_iter().collect()),
+                                    eval_quasiquote(AST::List(it.collect()))?
+                            ))
+                        }
+
+                        AST::List(vec![AST::Symbol(head_symbol)].into_iter().chain(head_tail.into_iter()).collect())
+                    }
+
+                    Ok((head_head, head_tail)) => 
+                        AST::List(vec![head_head].into_iter().chain(head_tail.into_iter()).collect()),
+
+                    Err(head) => head,
+                }
+            };
+
+            Ok(make_list!(
+                    AST::Symbol("cons".to_string()),
+                    eval_quasiquote(head)?,
+                    eval_quasiquote(AST::List(it.collect()))?
+            ))
+        }
+
+        Err(ast) => {
+            Ok(make_list!(AST::Symbol("quote".to_string()), ast))
+        }
     }
 }
 
 fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
     loop {
+        // dbg!(&ast);
         if let AST::List(mut elements) = ast.clone() {
             if elements.is_empty() {
                 return Ok(AST::List(elements));
@@ -160,8 +187,7 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
                         let def_symbol = args.pop_front().unwrap();
                         let def_value = args.pop_front().unwrap();
 
-                        ast = eval_def(def_symbol, def_value, &mut env)?;
-                        continue; // don't run the `apply` phase just yet
+                        return Ok(eval_def(def_symbol, def_value, &mut env)?);
                     }
 
                     "let*" => {
@@ -228,6 +254,7 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
                     "quasiquote" => {
                         expect_arity!(args, 1);
                         ast = eval_quasiquote(args.pop_front().unwrap())?;
+                        dbg!(&ast);
                         continue; // don't run the `apply` phase just yet
                     }
 
@@ -396,6 +423,13 @@ mod tests {
         rep(vec![
             "(def! sum (fn* (n acc) (if (= n 0) acc (sum (- n 1) (+ n acc)))))",
             "(sum 10000 0)"
+        ]);
+    }
+
+    #[test]
+    fn test_define_quoted_list() {
+        rep(vec![
+            "(def! a '(1 2 3))",
         ]);
     }
 }
