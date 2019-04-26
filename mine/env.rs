@@ -49,14 +49,10 @@ impl EnvStruct {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Env(Rc<EnvStruct>);
 
 impl Env {
-    pub fn pass(&self) -> Self {
-        self.clone()
-    }
-
     pub fn wrap(&self) -> Self {
         Self(Rc::new(EnvStruct::wrap(self.clone())))
     }
@@ -70,11 +66,6 @@ impl Env {
 
     pub fn set(&self, key: String, value: MalType) {
         self.0.set(key, value)
-    }
-
-    // private clone to ensure clear outside use
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
     }
 }
 

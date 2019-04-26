@@ -12,6 +12,8 @@ use std::ops::{Add, Sub, Mul, Div};
 use std::rc::Rc;
 use std::cell::RefCell;
 
+use crate::env::Env;
+
 #[derive(Clone)]
 pub(crate) enum MalType {
     Atom(Rc<RefCell<MalType>>),
@@ -24,6 +26,11 @@ pub(crate) enum MalType {
     Symbol(String),
     Vector(Vec<MalType>),
     Function(Rc<dyn Fn(MalArgs) -> MalResult>),
+    UserFunction {
+      body: Rc<MalType>,
+      env: Env,
+      symbols: Vec<String>,
+    },
 }
 
 pub(crate) type MalArgs = ImVec<MalType>;
@@ -55,6 +62,16 @@ impl MalType {
         }
 
         Ok(MalType::Dict(map))
+    }
+
+    pub fn user_function<It>(symbols: It, body: Self, env: Env) -> Self
+        where It: IntoIterator<Item=String>
+    {
+        MalType::UserFunction {
+            body: Rc::new(body),
+            env: env.wrap(),
+            symbols: symbols.into_iter().collect(),
+        }
     }
 }
 
@@ -98,7 +115,7 @@ impl fmt::Debug for MalType {
             Bool(x)     => write!(fmt, "Bool {{ {:?} }}", x),
             Str(x)      => write!(fmt, "Str {{ {:?} }}", x),
             Nil         => write!(fmt, "Nil"),
-            Function(_) => write!(fmt, "Function(...)"),
+            Function(_) | UserFunction { .. } => write!(fmt, "Function(...)"),
         }
     }
 }

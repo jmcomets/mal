@@ -21,7 +21,7 @@ use reader::Reader;
 use types::{
     MalType as AST,
     MalError as ASTError,
-    MalArgs as ASTArgs,
+    // MalArgs as ASTArgs,
 };
 
 use ASTError::*;
@@ -30,7 +30,7 @@ fn eval_ast_list<T>(elements: T, env: &Env) -> Result<T, ASTError>
     where T: IntoIterator<Item=AST> + FromIterator<AST>,
 {
     elements.into_iter()
-        .map(|x| eval(x, env.pass()))
+        .map(|x| eval(x, env.clone()))
         .collect()
 }
 
@@ -45,7 +45,7 @@ fn eval_ast(ast: AST, env: &Env) -> Result<AST, ASTError> {
 
 fn eval_def(symbol: AST, value: AST, env: &mut Env) -> Result<AST, ASTError> {
     if let AST::Symbol(symbol) = symbol {
-        let ast = eval(value, env.pass())?;
+        let ast = eval(value, env.clone())?;
         env.set(symbol.to_string(), ast.clone());
         Ok(ast)
     } else {
@@ -58,7 +58,7 @@ fn eval_let<'a, It>(bindings: It, env: &mut Env) -> Result<(), ASTError>
 {
     for (symbol, value) in bindings.into_iter().tuples() {
         if let AST::Symbol(symbol) = symbol {
-            let value = eval(value.clone(), env.pass())?;
+            let value = eval(value.clone(), env.clone())?;
             env.set(symbol.to_string(), value);
         } else {
             return Err(CanOnlyDefineSymbols(symbol.clone()));
@@ -77,7 +77,7 @@ fn eval_cond(condition: AST, if_true_body: AST, if_false_body: AST, env: &Env) -
     })
 }
 
-fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
+fn eval_fn<It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
     where It: IntoIterator<Item=AST>,
 {
     let it = bindings.into_iter();
@@ -91,18 +91,29 @@ fn eval_fn<'a, It>(bindings: It, body: AST, env: &Env) -> Result<AST, ASTError>
         }
     }
 
-    let captured_env = env.wrap();
+    Ok(AST::user_function(symbols, body, env.wrap()))
 
-    Ok(make_function!(move |args: ASTArgs| -> Result<AST, ASTError> {
-        expect_arity!(args, symbols.len());
+    // let it = bindings.into_iter();
+    // let (min_capacity, _) = it.size_hint();
+    // let mut symbols = Vec::with_capacity(min_capacity);
+    // for value in it {
+    //     if let AST::Symbol(symbol) = value {
+    //         symbols.push(symbol);
+    //     } else {
+    //         return Err(CanOnlyDefineSymbols(value.clone()));
+    //     }
+    // }
 
-        let call_env = captured_env.wrap();
-        for (symbol, value) in symbols.iter().zip(args.into_iter()) {
-            call_env.set(symbol.to_string(), value);
-        }
+    // Ok(make_function!(move |args: ASTArgs| -> Result<AST, ASTError> {
+    //     expect_arity!(args, symbols.len());
 
-        eval(body.clone(), call_env)
-    }))
+    //     let call_env = captured_env.wrap();
+    //     for (symbol, value) in symbols.iter().zip(args.into_iter()) {
+    //         call_env.set(symbol.to_string(), value);
+    //     }
+
+    //     eval(body.clone(), call_env)
+    // }))
 }
 
 fn eval_quasiquote_list<T>(elements: T) -> Result<AST, ASTError>
@@ -185,7 +196,7 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
                     "do" => {
                         ast = AST::Nil;
                         for arg in args {
-                            ast = eval(arg, env.pass())?;
+                            ast = eval(arg, env.clone())?;
                         }
                         continue; // don't run the `apply` phase just yet
                     }
@@ -242,6 +253,25 @@ fn eval(mut ast: AST, mut env: Env) -> Result<AST, ASTError> {
                 let symbol = elements.pop_front().unwrap();
                 return {
                     match symbol {
+                        AST::UserFunction { body, env: fn_env, symbols } => {
+                            expect_arity!(elements, symbols.len());
+
+                            let call_env = fn_env.wrap();
+                            for (symbol, value) in symbols.iter().zip(elements.into_iter()) {
+                                call_env.set(symbol.to_string(), value);
+                            }
+
+                            ast = std::rc::Rc::try_unwrap(body)
+                                .unwrap_or_else(|body| {
+                                    let body: &AST = &body;
+                                    body.clone()
+                                });
+
+                            env = call_env;
+
+                            // actually, don't apply just yet
+                            continue;
+                        },
                         AST::Function(func) => func(elements),
                         AST::Symbol(symbol) => Err(SymbolNotFound(symbol.to_string())),
                         ast @ _             => Err(NotEvaluable(ast)),
@@ -300,7 +330,7 @@ impl Interpreter {
         // add `eval` method to repl environment
         let captured_env = self.env.wrap();
         self.env.set("eval".to_string(), function!(ast {
-            eval(ast.clone(), captured_env.pass())
+            eval(ast.clone(), captured_env.clone())
         }));
 
         // evaluate `builtins`, similar to `core` but written in Mal
@@ -318,7 +348,7 @@ impl Interpreter {
             self.reader.push(s)?;
             let mut values = vec![];
             while let Some(value) = self.reader.pop() {
-                values.push(eval(value, self.env.pass()));
+                values.push(eval(value, self.env.clone()));
             }
             Ok(values)
         };

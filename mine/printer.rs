@@ -12,7 +12,7 @@ pub(crate) fn pr_str(t: &MalType, readably: bool) -> String {
         Bool(x)     => x.to_string(),
         Str(x)      => if readably { "\"".to_string() + x + "\"" } else { x.clone() },
         Nil         => "nil".to_string(),
-        Function(_) => "#<function>".to_string(),
+        Function(_) | UserFunction { .. } => "#<function>".to_string(),
     }
 }
 
